@@ -1,0 +1,27 @@
+import { transform } from '@babel/standalone';
+import solidPreset from 'babel-preset-solid';
+
+const actualPreset = (solidPreset as any).default || solidPreset;
+
+self.onmessage = async (e) => {
+  const { code, fileName } = e.data;
+  console.log('Compiling:', fileName);
+  try {
+    const result = transform(code, {
+      presets: [
+        ['typescript', { isTSX: true, allExtensions: true }],
+        [actualPreset, { 
+          moduleName: 'solid-js/web',
+          generate: 'dom', 
+          hydratable: false 
+        }],
+      ],
+      filename: fileName,
+    });
+    console.log('Compilation successful');
+    self.postMessage({ code: result.code });
+  } catch (err: any) {
+    console.error('Babel Transform Error:', err);
+    self.postMessage({ error: err.message });
+  }
+};
