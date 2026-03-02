@@ -1,16 +1,8 @@
-import { onCleanup, onMount, createEffect } from 'solid-js';
-import { EditorView, basicSetup } from 'codemirror';
-import { javascript } from '@codemirror/lang-javascript';
-import { oneDark } from '@codemirror/theme-one-dark';
-import { EditorState } from '@codemirror/state';
-import {
-  tsFacet,
-  tsSync,
-  tsLinterWorker,
-  tsAutocomplete,
-  tsHover,
-} from '../lib/codemirror-ts';
-import { autocompletion } from '@codemirror/autocomplete';
+import { createSignal, Show, lazy, Suspense } from 'solid-js';
+import CodeMirrorEditor from './CodeMirrorEditor';
+import { getInitialEditorType, EditorType } from '../lib/device';
+
+const MonacoEditor = lazy(() => import('./MonacoEditor'));
 
 interface EditorProps {
   code: string;
@@ -20,71 +12,48 @@ interface EditorProps {
 }
 
 export default function Editor(props: EditorProps) {
-  let editorParent: HTMLDivElement | undefined;
-  let view: EditorView | undefined;
+  const [editorType, setEditorType] = createSignal<EditorType>(getInitialEditorType());
 
-  const getExtensions = () => {
-    const extensions = [
-      basicSetup,
-      javascript({ typescript: true, jsx: true }),
-      oneDark,
-      EditorView.updateListener.of((v) => {
-        if (v.docChanged) {
-          props.onCodeChange(v.state.doc.toString());
-        }
-      }),
-    ];
-
-    if (props.lspWorker && (props.fileName.endsWith('.ts') || props.fileName.endsWith('.tsx'))) {
-      extensions.push(
-        tsFacet.of({
-          worker: props.lspWorker.instance,
-          path: props.fileName,
-        }),
-        tsSync(),
-        tsLinterWorker(),
-        autocompletion({ override: [tsAutocomplete()] }),
-        tsHover(),
-      );
-    }
-
-    return extensions;
+  const handleEditorChange = (e: Event) => {
+    const type = (e.target as HTMLSelectElement).value as EditorType;
+    setEditorType(type);
+    localStorage.setItem('preferred-editor', type);
   };
 
-  onMount(() => {
-    const startState = EditorState.create({
-      doc: props.code,
-      extensions: getExtensions(),
-    });
-
-    view = new EditorView({
-      state: startState,
-      parent: editorParent,
-    });
-  });
-
-  createEffect(() => {
-    // Reconfigure extensions if worker or fileName changes
-    if (view) {
-      view.setState(EditorState.create({
-        doc: view.state.doc.toString(),
-        extensions: getExtensions(),
-      }));
-    }
-  });
-
-  createEffect(() => {
-    // Update doc if it changed externally (e.g. file switch)
-    if (view && props.code !== view.state.doc.toString()) {
-      view.dispatch({
-        changes: { from: 0, to: view.state.doc.length, insert: props.code },
-      });
-    }
-  });
-
-  onCleanup(() => {
-    view?.destroy();
-  });
-
-  return <div ref={editorParent} class="h-full w-full overflow-auto" />;
+  return (
+    <div class="flex flex-col h-full overflow-hidden">
+      <div class="flex items-center justify-end px-2 py-1 bg-[#2d2d2d] border-b border-[#333333] shrink-0">
+        <label class="text-[10px] text-gray-400 mr-2 uppercase font-medium">Editor:</label>
+        <select 
+          value={editorType()} 
+          onInput={handleEditorChange}
+          class="bg-[#3c3c3c] text-white text-[11px] px-1 py-0.5 rounded border border-[#444444] focus:outline-none focus:border-[#007acc]"
+        >
+          <option value="monaco">Monaco</option>
+          <option value="codemirror">CodeMirror</option>
+        </select>
+      </div>
+      <div class="flex-1 overflow-hidden relative">
+        <Show 
+          when={editorType() === 'monaco'} 
+          fallback={
+            <CodeMirrorEditor 
+              code={props.code} 
+              onCodeChange={props.onCodeChange} 
+              fileName={props.fileName} 
+              lspWorker={props.lspWorker} 
+            />
+          }
+        >
+          <Suspense fallback={<div class="p-4 text-gray-400">Loading Monaco...</div>}>
+            <MonacoEditor 
+              code={props.code} 
+              onCodeChange={props.onCodeChange} 
+              fileName={props.fileName} 
+            />
+          </Suspense>
+        </Show>
+      </div>
+    </div>
+  );
 }
