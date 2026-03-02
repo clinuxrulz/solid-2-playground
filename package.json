@@ -11,6 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+
     "@babel/standalone": "^7.26.2",
     "@codemirror/autocomplete": "^6.18.3",
     "@codemirror/commands": "^6.7.1",

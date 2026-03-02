@@ -1,4 +1,7 @@
+
+// @ts-ignore
 import { transform } from '@babel/standalone';
+// @ts-ignore
 import solidPreset from 'babel-preset-solid';
 
 const actualPreset = (solidPreset as any).default || solidPreset;
@@ -25,3 +28,4 @@ self.onmessage = async (e) => {
     self.postMessage({ error: err.message });
   }
 };
+

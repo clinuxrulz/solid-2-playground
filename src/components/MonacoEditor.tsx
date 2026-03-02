@@ -1,4 +1,4 @@
-import { onCleanup, onMount, createEffect, createSignal } from 'solid-js';
+import { onCleanup, onMount, createEffect, createSignal, createMemo } from 'solid-js';
 import { setupMonacoLSP, updateDiagnostics } from '../lib/monaco-adapter';
 
 // Load monaco from CDN
@@ -42,6 +42,14 @@ function getLanguage(fileName: string): string {
 }
 
 const ensureSlash = (path: string) => path.startsWith('/') ? path : '/' + path;
+
+function debounce<T extends (...args: any[]) => void>(func: T, delay: number): (...args: Parameters<T>) => void {
+  let timeout: ReturnType<typeof setTimeout>;
+  return function(this: any, ...args: Parameters<T>) {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => func.apply(this, args), delay);
+  };
+}
 
 export default function MonacoEditor(props: MonacoEditorProps) {
   let editorParent: HTMLDivElement | undefined;
@@ -104,6 +112,8 @@ export default function MonacoEditor(props: MonacoEditorProps) {
     const currentCode = props.code;
     const lsp = props.lspWorker;
     
+    const debouncedUpdateDiagnostics = createMemo(() => debounce(updateDiagnostics, 300));
+    
     if (currentEditor) {
       loadMonaco().then(monaco => {
         const lang = getLanguage(currentFileName);
@@ -123,7 +133,7 @@ export default function MonacoEditor(props: MonacoEditorProps) {
 
         // Trigger diagnostics update
         if (lsp) {
-          updateDiagnostics(monaco, lsp, model);
+          debouncedUpdateDiagnostics()(monaco, lsp, model);
         }
       });
     }

@@ -86,6 +86,7 @@ let ts: any = null;
 
 async function ensureTs() {
   if (!ts) {
+// @ts-ignore
     ts = await import(/* @vite-ignore */ "https://esm.sh/typescript@5.7.2");
   }
   return ts;
