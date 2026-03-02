@@ -324,7 +324,7 @@ export default function App() {
         <Resizable.Panel 
           initialSize={0.5} 
           minSize={0.2}
-          class={`flex-1 flex-col bg-[#1e1e1e] ${activeView() === 'code' ? 'flex' : 'hidden md:flex'}`}
+          class={`flex-1 flex-col overflow-hidden bg-[#1e1e1e] ${activeView() === 'code' ? 'flex' : 'hidden md:flex'}`}
         >
           <div class="flex-1 overflow-hidden relative flex flex-col">
             <Show when={activeFile()} fallback={<div class="p-4 text-gray-500 flex-1 flex items-center justify-center">Select a file</div>}>
@@ -356,7 +356,7 @@ export default function App() {
         <Resizable.Panel 
           initialSize={0.5} 
           minSize={0.2}
-          class={`flex-1 flex-col bg-white border-l border-[#333333] ${activeView() === 'preview' ? 'flex' : 'hidden md:flex'}`}
+          class={`flex-1 flex-col overflow-hidden bg-white border-l border-[#333333] ${activeView() === 'preview' ? 'flex' : 'hidden md:flex'}`}
         >
           <div class="flex-1 overflow-hidden relative flex flex-col">
             <Preview code={compiledCode()} importMap={importMap()} />

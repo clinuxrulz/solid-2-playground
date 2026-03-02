@@ -86,5 +86,5 @@ export default function Editor(props: EditorProps) {
     view?.destroy();
   });
 
-  return <div ref={editorParent} class="h-full w-full overflow-auto" />;
+  return <div ref={editorParent} class="h-full w-full overflow-hidden" />;
 }
