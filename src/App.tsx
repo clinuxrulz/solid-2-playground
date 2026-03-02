@@ -25,9 +25,8 @@ function App() {
   );
 }
 
-render(() => <App />, document.getElementById('root'));
+render(() => <App />, document.getElementById('root')!);
 `,
-  'utils.ts': `export const greet = (name: string) => \`Hello, \${name}!\`;`
 };
 
 export default function App() {
@@ -328,11 +327,12 @@ export default function App() {
         >
           <div class="flex-1 overflow-hidden relative flex flex-col">
             <Show when={activeFile()} fallback={<div class="p-4 text-gray-500 flex-1 flex items-center justify-center">Select a file</div>}>
-              <Editor
+            <Editor
                 code={code()}
                 onCodeChange={setCode}
                 fileName={activeFile()}
                 lspWorker={lspWorker()}
+                allFiles={files()}
               />
             </Show>
             {/* Mobile Compiling Indicator */}

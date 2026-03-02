@@ -13,7 +13,8 @@
     "paths": {
       "*": ["node_modules/*"]
     },
-    "types": ["vite/client"]
+    "types": ["vite/client"],
+    "sourceMap": false
   },
   "include": ["src"]
 }

@@ -8,19 +8,25 @@ import { createWorker } from "../lib/codemirror-ts/worker";
 
 // Standard TypeScript library definitions
 const tsLibs = import.meta.glob("../../node_modules/typescript/lib/lib*.d.ts", {
-  as: "raw",
+  query: "?raw", import: "default",
   eager: true,
 });
 
 // SolidJS 2.0 type definitions
 const solidjsLibs = import.meta.glob("../../node_modules/solid-js-2/**/*.d.ts", {
-  as: "raw",
+  query: "?raw", import: "default",
   eager: true,
 });
 
 // SolidJS Web 2.0 type definitions
 const solidjsWebLibs = import.meta.glob("../../node_modules/@solidjs/web-2/**/*.d.ts", {
-  as: "raw",
+  query: "?raw", import: "default",
+  eager: true,
+});
+
+// SolidJS Signals 2.0 type definitions
+const solidjsSignalsLibs = import.meta.glob("../../node_modules/@solidjs/signals/**/*.d.ts", {
+  query: "?raw", import: "default",
   eager: true,
 });
 
@@ -61,6 +67,19 @@ fsMap.set("/node_modules/@solidjs/web/package.json", JSON.stringify({
   name: "@solidjs/web",
   version: "2.0.0-experimental.15",
   types: "./types/index.d.ts",
+}));
+
+// Populate SolidJS Signals libs
+for (const [path, content] of Object.entries(solidjsSignalsLibs)) {
+	const virtualPath = path.replace("../../node_modules/", "/node_modules/");
+	fsMap.set(virtualPath, content as string);
+}
+
+// Add a package.json for @solidjs/signals
+fsMap.set("/node_modules/@solidjs/signals/package.json", JSON.stringify({
+	name: "@solidjs/signals",
+	version: "0.10.8",
+	types: "./types/index.d.ts",
 }));
 
 let ts: any = null;
@@ -112,6 +131,9 @@ function createWorkerWrapper(
     async getVersion() {
       await ensureTs();
       return ts.version;
+    },
+    async getFsMap() {
+      return Array.from(fsMap.entries());
     }
   };
 }
@@ -132,7 +154,9 @@ Comlink.expose(
       paths: {
         "solid-js": ["/node_modules/solid-js/types/index.d.ts"],
         "solid-js/web": ["/node_modules/@solidjs/web/types/index.d.ts"],
-      }
+				"@solidjs/signals": ["/node_modules/@solidjs/signals/dist/types/index.d.ts"],
+      },
+      strict: true,
     };
     // Adding standard libraries to rootFiles to ensure they are loaded
     return createVirtualTypeScriptEnvironment(system, libFiles, tsInstance, compilerOptions);

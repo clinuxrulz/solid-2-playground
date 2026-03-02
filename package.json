@@ -23,6 +23,7 @@
     "@codemirror/theme-one-dark": "^6.1.2",
     "@codemirror/view": "^6.36.2",
     "@corvu/resizable": "^0.2.5",
+    "@solidjs/signals": "^0.10.8",
     "@solidjs/web-2": "npm:@solidjs/web@2.0.0-experimental.15",
     "@typescript/vfs": "^1.6.4",
     "assert": "^2.1.0",

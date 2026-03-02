@@ -9,6 +9,7 @@ interface EditorProps {
   onCodeChange: (code: string) => void;
   fileName: string;
   lspWorker: any;
+  allFiles: string[];
 }
 
 export default function Editor(props: EditorProps) {
@@ -50,6 +51,8 @@ export default function Editor(props: EditorProps) {
               code={props.code} 
               onCodeChange={props.onCodeChange} 
               fileName={props.fileName} 
+              lspWorker={props.lspWorker}
+              allFiles={props.allFiles}
             />
           </Suspense>
         </Show>

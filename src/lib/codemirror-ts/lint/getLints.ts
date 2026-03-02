@@ -15,7 +15,7 @@ export function getLints({ env, path, diagnosticCodesToIgnore, }) {
     const syntaticDiagnostics = env.languageService.getSyntacticDiagnostics(path);
     const semanticDiagnostics = env.languageService.getSemanticDiagnostics(path);
     const diagnostics = [...syntaticDiagnostics, ...semanticDiagnostics].filter((diagnostic) => isDiagnosticWithLocation(diagnostic) &&
-        !diagnosticCodesToIgnore.includes(diagnostic.code));
+        !(diagnosticCodesToIgnore ?? []).includes(diagnostic.code));
     return diagnostics.map(convertTSDiagnosticToCM);
 }
 //# sourceMappingURL=getLints.map
