@@ -3,6 +3,7 @@ import CodeMirrorEditor from './CodeMirrorEditor';
 import { getInitialEditorType, EditorType } from '../lib/device';
 
 const MonacoEditor = lazy(() => import('./MonacoEditor'));
+const NetVimEditor = lazy(() => import('./NetVimEditor'));
 
 interface EditorProps {
   code: string;
@@ -32,18 +33,30 @@ export default function Editor(props: EditorProps) {
         >
           <option value="monaco">Monaco</option>
           <option value="codemirror">CodeMirror</option>
+          <option value="net-vim">net-vim</option>
         </select>
       </div>
       <div class="flex-1 overflow-hidden relative">
         <Show 
           when={editorType() === 'monaco'} 
           fallback={
-            <CodeMirrorEditor 
-              code={props.code} 
-              onCodeChange={props.onCodeChange} 
-              fileName={props.fileName} 
-              lspWorker={props.lspWorker} 
-            />
+            <Show when={editorType() === 'net-vim'} fallback={
+              <CodeMirrorEditor 
+                code={props.code} 
+                onCodeChange={props.onCodeChange} 
+                fileName={props.fileName} 
+                lspWorker={props.lspWorker} 
+              />
+            }>
+               <Suspense fallback={<div class="p-4 text-gray-400">Loading Net-Vim...</div>}>
+                <NetVimEditor 
+                  code={props.code} 
+                  onCodeChange={props.onCodeChange} 
+                  fileName={props.fileName} 
+                  lspWorker={props.lspWorker} 
+                />
+              </Suspense>
+            </Show>
           }
         >
           <Suspense fallback={<div class="p-4 text-gray-400">Loading Monaco...</div>}>

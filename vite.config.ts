@@ -10,6 +10,7 @@ export default defineConfig({
   resolve: {
     alias: {
       'node:assert': 'assert',
+      '@net-vim/core': '/data/data/com.termux/files/home/GitHub/solid-2-playground/node_modules/@net-vim/core/dist/index.js',
     },
   },
   plugins: [

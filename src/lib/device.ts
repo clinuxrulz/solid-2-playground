@@ -6,10 +6,10 @@ export function isMobile(): boolean {
   return /android|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent.toLowerCase());
 }
 
-export type EditorType = 'monaco' | 'codemirror';
+export type EditorType = 'monaco' | 'codemirror' | 'net-vim';
 
 export function getInitialEditorType(): EditorType {
   const saved = localStorage.getItem('preferred-editor');
-  if (saved === 'monaco' || saved === 'codemirror') return saved as EditorType;
+  if (saved === 'monaco' || saved === 'codemirror' || saved === 'net-vim') return saved as EditorType;
   return isMobile() ? 'codemirror' : 'monaco';
 }

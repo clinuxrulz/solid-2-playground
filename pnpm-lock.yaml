@@ -44,12 +44,15 @@ importers:
       '@corvu/resizable':
         specifier: ^0.2.5
         version: 0.2.5(solid-js@1.9.11)
+      '@net-vim/core':
+        specifier: ^0.5.1
+        version: 0.5.1
       '@solidjs/signals':
-        specifier: ^0.10.8
-        version: 0.10.8
+        specifier: ^0.12.0
+        version: 0.12.0
       '@solidjs/web-2':
-        specifier: npm:@solidjs/web@2.0.0-experimental.15
-        version: '@solidjs/web@2.0.0-experimental.15(solid-js@1.9.11)'
+        specifier: npm:@solidjs/web@2.0.0-beta.2
+        version: '@solidjs/web@2.0.0-beta.2(@solidjs/signals@0.12.0)(solid-js@1.9.11)'
       '@typescript/vfs':
         specifier: ^1.6.4
         version: 1.6.4(typescript@5.9.3)
@@ -57,8 +60,8 @@ importers:
         specifier: ^2.1.0
         version: 2.1.0
       babel-preset-solid:
-        specifier: 2.0.0-experimental.15
-        version: 2.0.0-experimental.15(@babel/core@7.29.0)(solid-js@1.9.11)
+        specifier: 2.0.0-beta.2
+        version: 2.0.0-beta.2(@babel/core@7.29.0)(solid-js@1.9.11)
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
@@ -72,8 +75,8 @@ importers:
         specifier: ^1.9.11
         version: 1.9.11
       solid-js-2:
-        specifier: npm:solid-js@2.0.0-experimental.15
-        version: solid-js@2.0.0-experimental.15
+        specifier: npm:solid-js@2.0.0-beta.2
+        version: solid-js@2.0.0-beta.2
       tailwind-merge:
         specifier: ^3.0.1
         version: 3.5.0
@@ -426,6 +429,12 @@ packages:
   '@marijn/find-cluster-break@1.0.2':
     resolution: {integrity: sha512-l0h88YhZFyKdXIFNfSWpyjStDjGHwZ/U7iobcK1cQQD8sejsONdQtTVU+1wVN1PBw40PiiHB1vA5S7VTfQiP9g==}
 
+  '@net-vim/core@0.5.1':
+    resolution: {integrity: sha512-K6Tp/sK9a47PoSNZNeIJc6clslPu0r5EObf4+sbeo1GXDi4npusO8Bqn4MT1exI4PMjAp40kR9smpkx0v65FnA==}
+
+  '@net-vim/virtual-keyboard@0.1.0':
+    resolution: {integrity: sha512-DB+6NOKeVYIsDVJwHy2+XOopbN+AOLWQ4TgMQrnYgAVPjN/Bxw76dwyJrXdq2aRAZrCCeGO5epJI+u9W+gvZww==}
+
   '@rollup/rollup-android-arm-eabi@4.59.0':
     resolution: {integrity: sha512-upnNBkA6ZH2VKGcBj9Fyl9IGNPULcjXRlg0LLeaioQWueH30p6IXtJEbKAgvyv+mJaMxSm1l6xwDXYjpEMiLMg==}
     cpu: [arm]
@@ -564,13 +573,14 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@solidjs/signals@0.10.8':
-    resolution: {integrity: sha512-BtED8tOcMFXg80d/gZw/EQme6dj/PHaTpiqFyOi/3zvTn/RyJFhyFe8BBziKlw3iGG4MawAzya7z3zZNUaHPuQ==}
+  '@solidjs/signals@0.12.0':
+    resolution: {integrity: sha512-4yeBvMCTCCPZZ1G/x0XUVg82tgC/gLikPhl91cSdGvZXMLQUEHO9Ugbca0MfICcHHJXySieFyZrMNlQ5rWcGyQ==}
 
-  '@solidjs/web@2.0.0-experimental.15':
-    resolution: {integrity: sha512-9OMtWod5BkdfAxdeP7T4Ab5ZH1RuEXvVUx8Y9ZwUYeU+z454MI80wTzX5GxO6nNxZP/qaDa4lYaW60yWonWXIw==}
+  '@solidjs/web@2.0.0-beta.2':
+    resolution: {integrity: sha512-2nYMBWaNjitUdfrTZRKGk9GUJq/egE6u+ziPVdUuoIzYuu5qIMDxdYlo1C1VIajR0Kw2qMtzipt7kMZEd1rJKg==}
     peerDependencies:
-      solid-js: ^2.0.0-experimental.15
+      '@solidjs/signals': ^0.12.0
+      solid-js: ^2.0.0-beta.2
 
   '@tailwindcss/node@4.2.1':
     resolution: {integrity: sha512-jlx6sLk4EOwO6hHe1oCGm1Q4AN/s0rSrTTPBGPM0/RQ6Uylwq17FuU8IeJJKEjtc6K6O07zsvP+gDO6MMWo7pg==}
@@ -712,11 +722,11 @@ packages:
       solid-js:
         optional: true
 
-  babel-preset-solid@2.0.0-experimental.15:
-    resolution: {integrity: sha512-eOlCy2adwWlbE7+WtU2EsNGkPkL5Q+p35BUzy7sS1vvl3tUhh9gZbg5/R+MHAT4y3D+46BgHRSTZRjKNLFZGOw==}
+  babel-preset-solid@2.0.0-beta.2:
+    resolution: {integrity: sha512-+yS9inYZqrHnn58GuOHjEHnuKd0qqFpYlD3jcd92JFSDs/ngff4we7NobpCYbFj39aIJFlxbKaeyetJfH7ewkQ==}
     peerDependencies:
       '@babel/core': ^7.0.0
-      solid-js: 2.0.0-experimental.15
+      solid-js: ^2.0.0-beta.2
     peerDependenciesMeta:
       solid-js:
         optional: true
@@ -1091,8 +1101,8 @@ packages:
   solid-js@1.9.11:
     resolution: {integrity: sha512-WEJtcc5mkh/BnHA6Yrg4whlF8g6QwpmXXRg4P2ztPmcKeHHlH4+djYecBLhSpecZY2RRECXYUwIc/C2r3yzQ4Q==}
 
-  solid-js@2.0.0-experimental.15:
-    resolution: {integrity: sha512-2vVAD0FQbA9ILPCSHNGdN+NjXFWV1l0gTgbF0uZbE2AQrtCEtob4kg+el3Qjq18tEM+M8PmXudeAE71WNikAcg==}
+  solid-js@2.0.0-beta.2:
+    resolution: {integrity: sha512-vbU2KAKXUcyjFi85CVJBmrct680fDfALl1sb7W4dQSm4Ls6XOVIDWJMUvrFeBo13X+ov/18ZpwPWv4nSzgVcww==}
 
   solid-refresh@0.6.3:
     resolution: {integrity: sha512-F3aPsX6hVw9ttm5LYlth8Q15x6MlI/J3Dn+o3EQyRTtTxidepSTwAYdozt01/YA+7ObcciagGEyXIopGZzQtbA==}
@@ -1551,6 +1561,15 @@ snapshots:
 
   '@marijn/find-cluster-break@1.0.2': {}
 
+  '@net-vim/core@0.5.1':
+    dependencies:
+      '@net-vim/virtual-keyboard': 0.1.0
+      solid-js: 1.9.11
+
+  '@net-vim/virtual-keyboard@0.1.0':
+    dependencies:
+      solid-js: 1.9.11
+
   '@rollup/rollup-android-arm-eabi@4.59.0':
     optional: true
 
@@ -1626,10 +1645,11 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.59.0':
     optional: true
 
-  '@solidjs/signals@0.10.8': {}
+  '@solidjs/signals@0.12.0': {}
 
-  '@solidjs/web@2.0.0-experimental.15(solid-js@1.9.11)':
+  '@solidjs/web@2.0.0-beta.2(@solidjs/signals@0.12.0)(solid-js@1.9.11)':
     dependencies:
+      '@solidjs/signals': 0.12.0
       seroval: 1.5.0
       seroval-plugins: 1.5.0(seroval@1.5.0)
       solid-js: 1.9.11
@@ -1770,7 +1790,7 @@ snapshots:
     optionalDependencies:
       solid-js: 1.9.11
 
-  babel-preset-solid@2.0.0-experimental.15(@babel/core@7.29.0)(solid-js@1.9.11):
+  babel-preset-solid@2.0.0-beta.2(@babel/core@7.29.0)(solid-js@1.9.11):
     dependencies:
       '@babel/core': 7.29.0
       babel-plugin-jsx-dom-expressions: 0.41.0-next.8(@babel/core@7.29.0)
@@ -2157,9 +2177,9 @@ snapshots:
       seroval: 1.5.0
       seroval-plugins: 1.5.0(seroval@1.5.0)
 
-  solid-js@2.0.0-experimental.15:
+  solid-js@2.0.0-beta.2:
     dependencies:
-      '@solidjs/signals': 0.10.8
+      '@solidjs/signals': 0.12.0
       csstype: 3.2.3
       seroval: 1.5.0
       seroval-plugins: 1.5.0(seroval@1.5.0)

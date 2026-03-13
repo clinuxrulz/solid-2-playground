@@ -126,6 +126,16 @@ function createWorkerWrapper(
       if (!result) return null;
       return result.getHover(params);
     },
+    async getClassifications(path: string, start: number, length: number) {
+      if (!env) return null;
+      return {
+        syntactic: env.languageService.getEncodedSyntacticClassifications(path, { start, length }).spans,
+        semantic: env.languageService.getEncodedSemanticClassifications(path, { start, length }).spans,
+      };
+    },
+    async ping() {
+      return "pong";
+    },
     async deleteFile(path: string) {
       return env?.deleteFile(path);
     },
@@ -154,7 +164,7 @@ Comlink.expose(
       baseUrl: "/",
       paths: {
         "solid-js": ["/node_modules/solid-js/types/index.d.ts"],
-        "solid-js/web": ["/node_modules/@solidjs/web/types/index.d.ts"],
+        "@solid-js/web": ["/node_modules/@solidjs/web/types/index.d.ts"],
 				"@solidjs/signals": ["/node_modules/@solidjs/signals/dist/types/index.d.ts"],
       },
       strict: true,

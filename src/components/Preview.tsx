@@ -16,8 +16,8 @@ export default function Preview(props: PreviewProps) {
 
     const defaultImportMap = {
       "imports": {
-        "solid-js": "https://esm.sh/solid-js@2.0.0-experimental.15",
-        "solid-js/web": "https://esm.sh/@solidjs/web@2.0.0-experimental.15"
+        "solid-js": "https://esm.sh/solid-js@2.0.0-beta.2?dev",
+        "@solid-js/web": "https://esm.sh/@solidjs/web@2.0.0-beta.2?dev&external=solid-js"
       }
     };
 

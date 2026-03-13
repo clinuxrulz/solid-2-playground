@@ -7,13 +7,13 @@ import * as Comlink from 'comlink';
 
 const DEFAULT_IMPORT_MAP = {
   "imports": {
-    "solid-js": "https://esm.sh/solid-js@2.0.0-experimental.15",
-    "solid-js/web": "https://esm.sh/@solidjs/web@2.0.0-experimental.15"
+    "solid-js": "https://esm.sh/solid-js@2.0.0-beta.2?dev",
+    "@solid-js/web": "https://esm.sh/@solidjs/web@2.0.0-beta.2?dev&external=solid-js"
   }
 };
 
 const DEFAULT_FILES = {
-  'main.tsx': `import { render } from 'solid-js/web';
+  'main.tsx': `import { render } from '@solid-js/web';
 import { createSignal } from 'solid-js';
 
 function App() {
@@ -213,7 +213,7 @@ export default function App() {
   return (
     <div class="flex flex-col h-full bg-[#1e1e1e] text-[#cccccc] font-sans overflow-hidden">
       {/* Top Bar */}
-      <header class="flex items-center justify-between h-12 px-4 border-b border-[#333333] bg-[#252526] shrink-0">
+      <header class="flex items-center justify-between h-[calc(3rem+env(safe-area-inset-top))] px-4 pt-[env(safe-area-inset-top)] border-b border-[#333333] bg-[#252526] shrink-0">
         <div class="flex items-center space-x-3 overflow-hidden">
           <div class="flex items-center space-x-2 shrink-0">
             <svg class="w-5 h-5 text-[#76b3e1]" viewBox="0 0 166 155" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -365,7 +365,7 @@ export default function App() {
       </Resizable>
 
       {/* Footer */}
-      <footer class="h-6 bg-[#007acc] flex items-center px-2 text-[11px] text-white space-x-4 shrink-0">
+      <footer class="h-[calc(1.5rem+env(safe-area-inset-bottom))] bg-[#007acc] flex items-center px-2 pb-[env(safe-area-inset-bottom)] text-[11px] text-white space-x-4 shrink-0">
         <div class="flex items-center space-x-1">
           <span class="opacity-70">Ready</span>
         </div>
