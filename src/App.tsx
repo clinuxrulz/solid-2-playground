@@ -3,6 +3,7 @@ import Resizable from '@corvu/resizable';
 import Editor from './components/Editor';
 import Preview from './components/Preview';
 import { readFile, writeFile, listFiles, deleteFile } from './lib/opfs';
+import JSZip from 'jszip';
 import * as Comlink from 'comlink';
 
 const DEFAULT_IMPORT_MAP = {
@@ -39,9 +40,97 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = createSignal(true);
   const [importMap, setImportMap] = createSignal(JSON.stringify(DEFAULT_IMPORT_MAP, null, 2));
   const [lspWorker, setLspWorker] = createSignal<any>(null);
+  let importInput: HTMLInputElement | undefined;
 
   let compilerWorker: Worker | undefined;
   let lspWorkerInstance: Worker | undefined;
+
+  const exportOPFS = async () => {
+    try {
+      const fileNames = await listFiles();
+      if (fileNames.length === 0) {
+        alert('No files in OPFS to export.');
+        return;
+      }
+      const zip = new JSZip();
+      for (const fileName of fileNames) {
+        const content = await readFile(fileName);
+        if (content !== null) {
+          zip.file(fileName, content);
+        }
+      }
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'solid-playground-opfs.zip';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Export failed', error);
+      alert('Failed to export OPFS content as ZIP. Check console for details.');
+    }
+  };
+
+  const triggerImport = () => {
+    importInput?.click();
+  };
+
+  const importOPFS = async (event: Event) => {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    try {
+      const zip = await JSZip.loadAsync(file);
+      const existingFiles = await listFiles();
+      for (const name of existingFiles) {
+        await deleteFile(name);
+        const worker = lspWorker()?.instance;
+        if (worker && (name.endsWith('.tsx') || name.endsWith('.ts'))) {
+          await worker.deleteFile(name);
+        }
+      }
+
+      const imported: string[] = [];
+      for (const [fileName, entry] of Object.entries(zip.files)) {
+        if (entry.dir) continue;
+        const content = await entry.async('string');
+        await writeFile(fileName, content);
+        imported.push(fileName);
+
+        const worker = lspWorker()?.instance;
+        if (worker && (fileName.endsWith('.tsx') || fileName.endsWith('.ts'))) {
+          await worker.updateFile({ path: fileName, code: content });
+        }
+      }
+
+      const nonImportMap = imported.filter(f => f !== 'import-map.json');
+      setFiles(nonImportMap);
+
+      if (imported.includes('import-map.json')) {
+        const importMapContent = await readFile('import-map.json');
+        if (importMapContent !== null) {
+          setImportMap(importMapContent);
+        }
+      }
+
+      const preferredFile = nonImportMap.length > 0 ? nonImportMap[0] : 'main.tsx';
+      if (preferredFile) {
+        setActiveFile(preferredFile);
+        const content = await readFile(preferredFile);
+        setCode(content || '');
+      }
+
+      input.value = '';
+      alert('Import complete.');
+    } catch (error) {
+      console.error('Import failed', error);
+      alert('Failed to import ZIP. Check console for details.');
+    }
+  };
 
   onMount(async () => {
     // Initialize compiler worker
@@ -223,7 +312,8 @@ export default function App() {
           </div>
           <nav class="flex space-x-3 text-[12px] overflow-hidden whitespace-nowrap">
             <button class="hover:text-white shrink-0">Share</button>
-            <button class="hover:text-white shrink-0">Export</button>
+            <button onClick={exportOPFS} class="hover:text-white shrink-0">Export</button>
+            <button onClick={triggerImport} class="hover:text-white shrink-0">Import</button>
           </nav>
         </div>
         
@@ -254,6 +344,13 @@ export default function App() {
           </div>
         </div>
       </header>
+      <input
+        ref={(el) => (importInput = el as HTMLInputElement | undefined)}
+        type="file"
+        accept=".zip"
+        style={{ display: 'none' }}
+        onChange={importOPFS}
+      />
 
       {/* File Tabs */}
       <div class="flex items-center h-9 bg-[#252526] border-b border-[#333333] overflow-hidden shrink-0">
