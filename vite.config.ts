@@ -8,6 +8,11 @@ import { VitePWA } from 'vite-plugin-pwa';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const ESM_SH_DEPENDENCIES = [
+  'https://esm.sh/solid-js@2.0.0-experimental.15',
+  'https://esm.sh/@solidjs/web@2.0.0-experimental.15',
+];
+
 export default defineConfig({
   base: './',
   define: {
@@ -32,25 +37,26 @@ export default defineConfig({
         theme_color: '#000000',
         icons: [
           {
-            src: 'pwa-192x192.png',
+            src: 'vite-icon.svg',
             sizes: '192x192',
-            type: 'image/png',
+            type: 'image/svg+xml',
           },
           {
-            src: 'pwa-512x512.png',
+            src: 'vite-icon.svg',
             sizes: '512x512',
-            type: 'image/png',
+            type: 'image/svg+xml',
           },
           {
-            src: 'pwa-512x512.png',
+            src: 'vite-icon.svg',
             sizes: '512x512',
-            type: 'image/png',
+            type: 'image/svg+xml',
             purpose: 'any maskable',
           },
         ],
       },
       workbox: {
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        additionalManifestEntries: ESM_SH_DEPENDENCIES.map((url) => ({ url, revision: null })),
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/cdnjs\.cloudflare\.com\/.*/i,
