@@ -49,7 +49,7 @@ for (const [path, content] of Object.entries(solidjsLibs)) {
 }
 fsMap.set("/node_modules/solid-js/package.json", JSON.stringify({
   name: "solid-js",
-  version: "2.0.0-experimental.15",
+  version: "2.0.0-beta.2",
   types: "./types/index.d.ts",
 }));
 
@@ -60,7 +60,7 @@ for (const [path, content] of Object.entries(solidjsWebLibs)) {
 }
 fsMap.set("/node_modules/@solidjs/web/package.json", JSON.stringify({
   name: "@solidjs/web",
-  version: "2.0.0-experimental.15",
+  version: "2.0.0-beta.2",
   types: "./types/index.d.ts",
 }));
 
@@ -71,8 +71,8 @@ for (const [path, content] of Object.entries(solidjsSignalsLibs)) {
 }
 fsMap.set("/node_modules/@solidjs/signals/package.json", JSON.stringify({
   name: "@solidjs/signals",
-  version: "0.10.8",
-  types: "./types/index.d.ts",
+  version: "0.12.0",
+  types: "./dist/types/index.d.ts",
 }));
 
 let ts: any = null;
@@ -184,11 +184,11 @@ Comlink.expose(
       baseUrl: "/",
       paths: {
         "solid-js": ["/node_modules/solid-js/types/index.d.ts"],
-        "solid-js/*": ["/node_modules/solid-js/*"],
+        "solid-js/*": ["/node_modules/solid-js/types/*", "/node_modules/solid-js/*"],
         "@solidjs/web": ["/node_modules/@solidjs/web/types/index.d.ts"],
-        "@solidjs/web/*": ["/node_modules/@solidjs/web/*"],
-        "@solidjs/signals": ["/node_modules/@solidjs/signals/types/index.d.ts"],
-        "@solidjs/signals/*": ["/node_modules/@solidjs/signals/*"]
+        "@solidjs/web/*": ["/node_modules/@solidjs/web/types/*", "/node_modules/@solidjs/web/*"],
+        "@solidjs/signals": ["/node_modules/@solidjs/signals/dist/types/index.d.ts"],
+        "@solidjs/signals/*": ["/node_modules/@solidjs/signals/dist/types/*", "/node_modules/@solidjs/signals/*"]
       },
       // Force TS to stay within our virtual node_modules
       typeRoots: ["/node_modules"],
