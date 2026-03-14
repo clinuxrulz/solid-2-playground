@@ -53,6 +53,9 @@ importers:
       '@solidjs/web-2':
         specifier: npm:@solidjs/web@2.0.0-beta.2
         version: '@solidjs/web@2.0.0-beta.2(@solidjs/signals@0.12.0)(solid-js@1.9.11)'
+      '@typescript/ata':
+        specifier: 0.9.8
+        version: 0.9.8(typescript@5.9.3)
       '@typescript/vfs':
         specifier: ^1.6.4
         version: 1.6.4(typescript@5.9.3)
@@ -1177,6 +1180,11 @@ packages:
 
   '@types/trusted-types@2.0.7':
     resolution: {integrity: sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw==}
+
+  '@typescript/ata@0.9.8':
+    resolution: {integrity: sha512-+M815CeDRJS5H5ciWfhFCKp25nNfF+LFWawWAaBhNlquFb2wS5IIMDI+2bKWN3GuU6mpj+FzySsOD29M4nG8Xg==}
+    peerDependencies:
+      typescript: '>=4.4.4'
 
   '@typescript/vfs@1.6.4':
     resolution: {integrity: sha512-PJFXFS4ZJKiJ9Qiuix6Dz/OwEIqHD7Dme1UwZhTK11vR+5dqW2ACbdndWQexBzCx+CPuMe5WBYQWCsFyGlQLlQ==}
@@ -3553,6 +3561,10 @@ snapshots:
   '@types/resolve@1.20.2': {}
 
   '@types/trusted-types@2.0.7': {}
+
+  '@typescript/ata@0.9.8(typescript@5.9.3)':
+    dependencies:
+      typescript: 5.9.3
 
   '@typescript/vfs@1.6.4(typescript@5.9.3)':
     dependencies:

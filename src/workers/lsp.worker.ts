@@ -3,6 +3,7 @@ import {
   createVirtualTypeScriptEnvironment,
   VirtualTypeScriptEnvironment,
 } from "@typescript/vfs";
+import { setupTypeAcquisition } from "@typescript/ata";
 import * as Comlink from "comlink";
 import { createWorker } from "../lib/codemirror-ts/worker";
 
@@ -33,74 +34,94 @@ const solidjsSignalsLibs = import.meta.glob("../../node_modules/@solidjs/signals
 const fsMap = new Map<string, string>();
 const libFiles: string[] = [];
 
-// Populate standard libs
+// 1. Populate standard libs
 for (const [path, content] of Object.entries(tsLibs)) {
   const fileName = path.split("/").pop()!;
   const virtualPath = `/node_modules/typescript/lib/${fileName}`;
   fsMap.set(virtualPath, content as string);
-  fsMap.set(`/lib/${fileName}`, content as string);
-  fsMap.set(`/${fileName}`, content as string);
   libFiles.push(virtualPath);
 }
 
-// Populate SolidJS libs
+// 2. Populate SolidJS 2.0 libs
 for (const [path, content] of Object.entries(solidjsLibs)) {
   const virtualPath = path.replace("../../node_modules/solid-js-2/", "/node_modules/solid-js/");
   fsMap.set(virtualPath, content as string);
 }
-
-// Add a package.json for solid-js
 fsMap.set("/node_modules/solid-js/package.json", JSON.stringify({
   name: "solid-js",
   version: "2.0.0-experimental.15",
   types: "./types/index.d.ts",
 }));
 
-// Populate SolidJS Web libs
+// 3. Populate @solidjs/web 2.0 libs
 for (const [path, content] of Object.entries(solidjsWebLibs)) {
   const virtualPath = path.replace("../../node_modules/@solidjs/web-2/", "/node_modules/@solidjs/web/");
   fsMap.set(virtualPath, content as string);
 }
-
-// Add a package.json for @solidjs/web
 fsMap.set("/node_modules/@solidjs/web/package.json", JSON.stringify({
   name: "@solidjs/web",
   version: "2.0.0-experimental.15",
   types: "./types/index.d.ts",
 }));
 
-// Populate SolidJS Signals libs
+// 4. Populate SolidJS Signals libs
 for (const [path, content] of Object.entries(solidjsSignalsLibs)) {
-	const virtualPath = path.replace("../../node_modules/", "/node_modules/");
-	fsMap.set(virtualPath, content as string);
+  const virtualPath = path.replace("../../node_modules/", "/node_modules/");
+  fsMap.set(virtualPath, content as string);
 }
-
-// Add a package.json for @solidjs/signals
 fsMap.set("/node_modules/@solidjs/signals/package.json", JSON.stringify({
-	name: "@solidjs/signals",
-	version: "0.10.8",
-	types: "./types/index.d.ts",
+  name: "@solidjs/signals",
+  version: "0.10.8",
+  types: "./types/index.d.ts",
 }));
 
 let ts: any = null;
-
 async function ensureTs() {
   if (!ts) {
-// @ts-ignore
+    // @ts-ignore
     ts = await import(/* @vite-ignore */ "https://esm.sh/typescript@5.7.2");
   }
   return ts;
 }
 
-function createWorkerWrapper(
-  fn: () => Promise<VirtualTypeScriptEnvironment>,
-): any {
+function createWorkerWrapper(fn: () => Promise<VirtualTypeScriptEnvironment>): any {
   let env: VirtualTypeScriptEnvironment | undefined;
   let result: any;
+  let ataRunner: ((sourceFile: string) => Promise<void>) | undefined;
+  
+  // Modules ATA is strictly forbidden from touching
+  const forbiddenModules = ["solid-js", "@solid-js/web", "@solidjs/web", "@solidjs/signals"];
 
   return {
     async initialize() {
       const tsInstance = await ensureTs();
+
+      // Setup ATA with strict filters
+      ataRunner = setupTypeAcquisition({
+        projectName: "solid-2-playground",
+        typescript: tsInstance,
+        delegate: {
+          receivedFile(code, path) {
+            // CRITICAL: If ATA tries to download anything related to Solid, block it.
+            if (forbiddenModules.some(m => path.includes(m))) return;
+            
+            if (!fsMap.has(path)) {
+              fsMap.set(path, code);
+              env?.createFile(path, code);
+            }
+          },
+          finished(files) {
+            files.forEach((code, path) => {
+              if (forbiddenModules.some(m => path.includes(m))) return;
+              if (!fsMap.has(path)) {
+                fsMap.set(path, code);
+                env?.createFile(path, code);
+              }
+            });
+          },
+        },
+      });
+
       const envPromise = fn();
       result = createWorker(
         (async () => {
@@ -110,21 +131,32 @@ function createWorkerWrapper(
       );
       await result.initialize();
     },
+
     async updateFile(params: any) {
       if (!result) return;
-      return result.updateFile(params);
+      const response = await result.updateFile(params);
+
+      // Only run ATA if we have a runner and code
+      if (ataRunner && params?.code) {
+        try {
+          await ataRunner(params.code);
+        } catch (error) {
+          console.warn("ATA run failed", error);
+        }
+      }
+      return response;
     },
-    async getLints(params: any) {
-      if (!result) return [];
-      return result.getLints(params);
-    },
-    async getAutocompletion(params: any) {
-      if (!result) return null;
-      return result.getAutocompletion(params);
-    },
-    async getHover(params: any) {
-      if (!result) return null;
-      return result.getHover(params);
+
+    // Standard LSP methods...
+    async getLints(params: any) { return result?.getLints(params) || []; },
+    async getAutocompletion(params: any) { return result?.getAutocompletion(params) || null; },
+    async getHover(params: any) { return result?.getHover(params) || null; },
+    async deleteFile(path: string) { return env?.deleteFile(path); },
+    async ping() { return "pong"; },
+    async getFsMap() { return Array.from(fsMap.entries()); },
+    async getVersion() {
+      await ensureTs();
+      return ts.version;
     },
     async getClassifications(path: string, start: number, length: number) {
       if (!env) return null;
@@ -132,19 +164,6 @@ function createWorkerWrapper(
         syntactic: env.languageService.getEncodedSyntacticClassifications(path, { start, length }).spans,
         semantic: env.languageService.getEncodedSemanticClassifications(path, { start, length }).spans,
       };
-    },
-    async ping() {
-      return "pong";
-    },
-    async deleteFile(path: string) {
-      return env?.deleteFile(path);
-    },
-    async getVersion() {
-      await ensureTs();
-      return ts.version;
-    },
-    async getFsMap() {
-      return Array.from(fsMap.entries());
     }
   };
 }
@@ -153,6 +172,7 @@ Comlink.expose(
   createWorkerWrapper(async function () {
     const tsInstance = await ensureTs();
     const system = createSystem(fsMap);
+    
     const compilerOptions = {
       target: tsInstance.ScriptTarget.ESNext,
       module: tsInstance.ModuleKind.ESNext,
@@ -164,12 +184,18 @@ Comlink.expose(
       baseUrl: "/",
       paths: {
         "solid-js": ["/node_modules/solid-js/types/index.d.ts"],
-        "@solid-js/web": ["/node_modules/@solidjs/web/types/index.d.ts"],
-				"@solidjs/signals": ["/node_modules/@solidjs/signals/dist/types/index.d.ts"],
+        "solid-js/*": ["/node_modules/solid-js/*"],
+        "@solidjs/web": ["/node_modules/@solidjs/web/types/index.d.ts"],
+        "@solidjs/web/*": ["/node_modules/@solidjs/web/*"],
+        "@solidjs/signals": ["/node_modules/@solidjs/signals/types/index.d.ts"],
+        "@solidjs/signals/*": ["/node_modules/@solidjs/signals/*"]
       },
+      // Force TS to stay within our virtual node_modules
+      typeRoots: ["/node_modules"],
       strict: true,
+      skipLibCheck: true,
     };
-    // Adding standard libraries to rootFiles to ensure they are loaded
+
     return createVirtualTypeScriptEnvironment(system, libFiles, tsInstance, compilerOptions);
   }),
 );

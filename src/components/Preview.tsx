@@ -3,11 +3,22 @@ import { createEffect, createSignal, onCleanup, onMount } from 'solid-js';
 interface PreviewProps {
   code: string;
   importMap?: string;
+  compiledFiles?: Record<string, string>;
+  entryFile?: string;
 }
 
 export default function Preview(props: PreviewProps) {
   let iframeRef: HTMLIFrameElement | undefined;
+  let iframeUrl: string | null = null;
+  let moduleUrls: string[] = [];
   const [error, setError] = createSignal<string | null>(null);
+
+  const revokeModuleUrls = () => {
+    for (const url of moduleUrls) {
+      URL.revokeObjectURL(url);
+    }
+    moduleUrls = [];
+  };
 
   const updateIframe = () => {
     if (!iframeRef) return;
@@ -17,14 +28,39 @@ export default function Preview(props: PreviewProps) {
     const defaultImportMap = {
       "imports": {
         "solid-js": "https://esm.sh/solid-js@2.0.0-beta.2?dev",
-        "@solid-js/web": "https://esm.sh/@solidjs/web@2.0.0-beta.2?dev&external=solid-js"
+        "@solidjs/web": "https://esm.sh/@solidjs/web@2.0.0-beta.2?dev&external=solid-js"
       }
     };
 
-    let importMapContent = props.importMap;
-    if (!importMapContent) {
-      importMapContent = JSON.stringify(defaultImportMap);
+    let importMapObj = { ...defaultImportMap } as any;
+    if (props.importMap) {
+      try {
+        const parsed = JSON.parse(props.importMap);
+        if (parsed?.imports && typeof parsed.imports === 'object') {
+          importMapObj.imports = {
+            ...defaultImportMap.imports,
+            ...parsed.imports,
+          };
+        }
+      } catch (e) {
+        console.warn('Invalid import map JSON, using defaults', e);
+      }
     }
+
+    if (props.compiledFiles) {
+      revokeModuleUrls();
+      for (const [moduleKey, moduleCode] of Object.entries(props.compiledFiles)) {
+        const moduleBlob = new Blob([moduleCode], { type: 'application/javascript' });
+        const moduleUrl = URL.createObjectURL(moduleBlob);
+        moduleUrls.push(moduleUrl);
+        importMapObj.imports[moduleKey] = moduleUrl;
+      }
+    }
+
+    const entry = props.entryFile || '';
+    const moduleScript = (props.compiledFiles && props.entryFile && props.compiledFiles[props.entryFile])
+      ? `import '${entry}';`
+      : props.code;
 
     const html = `
       <!DOCTYPE html>
@@ -32,7 +68,7 @@ export default function Preview(props: PreviewProps) {
         <head>
           <meta charset="utf-8">
           <script type="importmap">
-            ${importMapContent}
+            ${JSON.stringify(importMapObj)}
           </script>
           <style>
             body { font-family: sans-serif; margin: 0; }
@@ -57,12 +93,13 @@ export default function Preview(props: PreviewProps) {
     `;
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
+
+    if (iframeUrl) {
+      URL.revokeObjectURL(iframeUrl);
+    }
+    iframeUrl = url;
+
     iframeRef.src = url;
-    
-    // Cleanup the previous URL
-    const oldUrl = iframeRef.dataset.url;
-    if (oldUrl) URL.revokeObjectURL(oldUrl);
-    iframeRef.dataset.url = url;
   };
 
   createEffect(() => {
@@ -70,9 +107,11 @@ export default function Preview(props: PreviewProps) {
   });
 
   onCleanup(() => {
-    if (iframeRef?.dataset.url) {
-      URL.revokeObjectURL(iframeRef.dataset.url);
+    if (iframeUrl) {
+      URL.revokeObjectURL(iframeUrl);
+      iframeUrl = null;
     }
+    revokeModuleUrls();
   });
 
   // Listen for errors from the iframe
