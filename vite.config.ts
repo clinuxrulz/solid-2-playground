@@ -30,6 +30,7 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: false,
+      manifestFilename: 'manifest.json',
       devOptions: {
         enabled: true,
         type: 'module',
@@ -66,6 +67,7 @@ export default defineConfig({
         ],
       },
       workbox: {
+        mode: 'development',
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         additionalManifestEntries: ESM_SH_DEPENDENCIES.map((url) => ({ url, revision: null })),
