@@ -90,7 +90,7 @@ function createWorkerWrapper(fn: () => Promise<VirtualTypeScriptEnvironment>): a
   let ataRunner: ((sourceFile: string) => Promise<void>) | undefined;
   
   // Modules ATA is strictly forbidden from touching
-  const forbiddenModules = ["solid-js", "@solid-js/web", "@solidjs/web", "@solidjs/signals"];
+  const forbiddenModules = ["solid-js", "@solidjs/web", "@solidjs/signals"];
 
   return {
     async initialize() {

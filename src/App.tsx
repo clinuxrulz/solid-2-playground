@@ -9,12 +9,12 @@ import * as Comlink from 'comlink';
 const DEFAULT_IMPORT_MAP = {
   "imports": {
     "solid-js": "https://esm.sh/solid-js@2.0.0-beta.2?dev",
-    "@solid-js/web": "https://esm.sh/@solidjs/web@2.0.0-beta.2?dev&external=solid-js"
+    "@solidjs/web": "https://esm.sh/@solidjs/web@2.0.0-beta.2?dev&external=solid-js"
   }
 };
 
 const DEFAULT_FILES = {
-  'main.tsx': `import { render } from '@solid-js/web';
+  'main.tsx': `import { render } from '@solidjs/web';
 import { createSignal } from 'solid-js';
 
 function App() {

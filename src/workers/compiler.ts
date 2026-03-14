@@ -17,7 +17,7 @@ self.onmessage = async (e) => {
           presets: [
             ['typescript', { isTSX: true, allExtensions: true }],
             [actualPreset, { 
-              moduleName: '@solid-js/web',
+              moduleName: '@solidjs/web',
               generate: 'dom', 
               hydratable: false 
             }],
@@ -42,7 +42,7 @@ self.onmessage = async (e) => {
       presets: [
         ['typescript', { isTSX: true, allExtensions: true }],
         [actualPreset, { 
-          moduleName: '@solid-js/web',
+          moduleName: '@solidjs/web',
           generate: 'dom', 
           hydratable: false 
         }],
