@@ -35,7 +35,7 @@ export default defineConfig({
         enabled: true,
         type: 'module',
       },
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
+      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'logo.svg'],
       manifest: {
         name: 'Solid 2.0 Playground',
         short_name: 'Solid2Play',
@@ -49,19 +49,14 @@ export default defineConfig({
         orientation: 'any',
         icons: [
           {
-            src: 'pwa-192x192.png',
-            sizes: '192x192',
-            type: 'image/png',
+            src: 'logo.svg',
+            sizes: 'any',
+            type: 'image/svg+xml',
           },
           {
-            src: 'pwa-512x512.png',
-            sizes: '512x512',
-            type: 'image/png',
-          },
-          {
-            src: 'pwa-512x512.png',
-            sizes: '512x512',
-            type: 'image/png',
+            src: 'logo.svg',
+            sizes: 'any',
+            type: 'image/svg+xml',
             purpose: 'any maskable',
           },
         ],
