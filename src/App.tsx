@@ -39,6 +39,7 @@ export default function App() {
   const [activeView, setActiveView] = createSignal<'code' | 'preview'>('code');
   const [isSidebarOpen, setIsSidebarOpen] = createSignal(true);
   const [importMap, setImportMap] = createSignal(JSON.stringify(DEFAULT_IMPORT_MAP, null, 2));
+  const [lastExportName, setLastExportName] = createSignal('solid-playground-opfs.zip');
   const [lspWorker, setLspWorker] = createSignal<any>(null);
   let importInput: HTMLInputElement | undefined;
 
@@ -47,6 +48,20 @@ export default function App() {
 
   const exportOPFS = async () => {
     try {
+      const fileNamePrompt = window.prompt('Export ZIP filename', lastExportName());
+      if (!fileNamePrompt) {
+        return;
+      }
+      let fileName = fileNamePrompt.trim();
+      if (!fileName) {
+        alert('Filename cannot be empty.');
+        return;
+      }
+      if (!fileName.toLowerCase().endsWith('.zip')) {
+        fileName += '.zip';
+      }
+      setLastExportName(fileName);
+
       const fileNames = await listFiles();
       if (fileNames.length === 0) {
         alert('No files in OPFS to export.');
@@ -63,7 +78,7 @@ export default function App() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'solid-playground-opfs.zip';
+      a.download = fileName;
       a.click();
       URL.revokeObjectURL(url);
     } catch (error) {
@@ -122,6 +137,12 @@ export default function App() {
         setActiveFile(preferredFile);
         const content = await readFile(preferredFile);
         setCode(content || '');
+      }
+
+      const importedName = file.name.trim();
+      if (importedName) {
+        const adjusted = importedName.toLowerCase().endsWith('.zip') ? importedName : `${importedName}.zip`;
+        setLastExportName(adjusted);
       }
 
       input.value = '';

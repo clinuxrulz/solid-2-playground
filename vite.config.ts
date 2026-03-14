@@ -1,7 +1,12 @@
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { defineConfig } from 'vite';
 import solidPlugin from 'vite-plugin-solid';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export default defineConfig({
   base: './',
@@ -11,7 +16,7 @@ export default defineConfig({
   resolve: {
     alias: {
       'node:assert': 'assert',
-      '@net-vim/core': '/data/data/com.termux/files/home/GitHub/solid-2-playground/node_modules/@net-vim/core/dist/index.js',
+      '@net-vim/core': path.resolve(__dirname, 'node_modules', '@net-vim/core', 'dist', 'index.js'),
     },
   },
   plugins: [
@@ -45,6 +50,7 @@ export default defineConfig({
         ],
       },
       workbox: {
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/cdnjs\.cloudflare\.com\/.*/i,
