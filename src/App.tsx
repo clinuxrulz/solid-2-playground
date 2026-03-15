@@ -363,7 +363,7 @@ export default function App() {
 
           compilerWorker.postMessage({ 
             files: sourceFiles, 
-            entry: normalizeFilePath(fileName).replace(/^\/+/, '') 
+            entry: 'main.tsx'
           });
         }
         
@@ -594,7 +594,7 @@ export default function App() {
             code={compiledCode()}
             importMap={importMap()}
             compiledFiles={compiledFiles()}
-            entryFile={normalizeFilePath(activeFile())}
+            entryFile="/main.tsx"
           />
           </div>
         </Resizable.Panel>
