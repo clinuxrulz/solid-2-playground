@@ -70,7 +70,7 @@ export default defineConfig({
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/cdnjs\.cloudflare\.com\/.*/i,
-            handler: 'CacheFirst',
+            handler: 'NetworkFirst',
             options: {
               cacheName: 'cloudflare-cache',
               expiration: {
@@ -84,7 +84,7 @@ export default defineConfig({
           },
           {
             urlPattern: /^https:\/\/esm\.sh\/.*/i,
-            handler: 'CacheFirst',
+            handler: 'NetworkFirst',
             options: {
               cacheName: 'esm-sh-cache',
               expiration: {
