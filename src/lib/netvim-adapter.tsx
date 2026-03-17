@@ -135,7 +135,7 @@ export default {
     api.registerLineRenderer({
       name: 'lsp-highlighter',
       priority: 10,
-      render: ({ lineIndex, lineContent, leftCol, viewportWidth, currentFilePath }: any) => {
+      render: ({ lineIndex, lineContent, leftCol, viewportWidth, currentFilePath, visualStart, mode, cursor }: any) => {
         const path = typeof currentFilePath === 'function' ? currentFilePath() : currentFilePath;
         if (!path || !(path.endsWith('.ts') || path.endsWith('.tsx'))) return null;
 
@@ -144,11 +144,65 @@ export default {
         const width = typeof viewportWidth === 'function' ? viewportWidth() : viewportWidth;
         const idx = typeof lineIndex === 'function' ? lineIndex() : lineIndex;
 
+        const start = typeof visualStart === 'function' ? visualStart() : visualStart;
+        const currentMode = typeof mode === 'function' ? mode() : mode;
+        const currentCursor = typeof cursor === 'function' ? cursor() : cursor;
+
+        let highlightStart = -1;
+        let highlightEnd = -1;
+
+        if (start && currentMode === 'Visual') {
+          const minLine = Math.min(start.y, currentCursor.y);
+          const maxLine = Math.max(start.y, currentCursor.y);
+
+          if (idx >= minLine && idx <= maxLine) {
+            if (minLine === maxLine) {
+              highlightStart = Math.min(start.x, currentCursor.x);
+              highlightEnd = Math.max(start.x, currentCursor.x) + 1;
+            } else if (idx === minLine) {
+              highlightStart = (start.y === minLine) ? start.x : currentCursor.x;
+              highlightEnd = content.length;
+            } else if (idx === maxLine) {
+              highlightStart = 0;
+              highlightEnd = (start.y === maxLine) ? start.x : currentCursor.x;
+              highlightEnd += 1;
+            } else {
+              highlightStart = 0;
+              highlightEnd = content.length;
+            }
+          }
+        }
+
         const absolutePath = path.startsWith('/') ? path : '/' + path;
         const classifications = classificationsMap.get(absolutePath);
         
+        const selectionColor = '#004b72';
+        const tokens = [];
+
+        const addToken = (x: number, tokenContent: string, color: string) => {
+          for (let i = 0; i < tokenContent.length; i++) {
+            const col = x + i;
+            const isHighlighted = col >= highlightStart && col < highlightEnd;
+            
+            let j = i + 1;
+            while (j < tokenContent.length && (x + j >= highlightStart && x + j < highlightEnd) === isHighlighted) {
+              j++;
+            }
+            
+            const part = tokenContent.slice(i, j);
+            tokens.push({
+              x: col,
+              content: part,
+              color,
+              bg_color: isHighlighted ? selectionColor : undefined
+            });
+            i = j - 1;
+          }
+        };
+
         if (!classifications) {
-          return <tui-text x={0} content={content.slice(startCol, startCol + width)} color="#ffffff" />;
+          addToken(0, content.slice(startCol, startCol + width), '#ffffff');
+          return tokens.map(t => <tui-text x={t.x} content={t.content} color={t.color} bg_color={t.bg_color} />);
         }
 
         const bufferLines = api.getBuffer();
@@ -164,11 +218,11 @@ export default {
         const addSpans = (spans: number[], isSemantic: boolean) => {
           if (!spans) return;
           for (let i = 0; i < spans.length; i += 3) {
-            const start = spans[i];
+            const startOffset = spans[i];
             const length = spans[i + 1];
             const type = spans[i + 2];
-            if (start + length > lineStartOffset && start < lineEndOffset) {
-              relevantSpans.push({ start, length, type, isSemantic });
+            if (startOffset + length > lineStartOffset && startOffset < lineEndOffset) {
+              relevantSpans.push({ start: startOffset, length, type, isSemantic });
             }
           }
         };
@@ -177,7 +231,6 @@ export default {
         addSpans(semantic, true);
         relevantSpans.sort((a, b) => a.start - b.start || b.length - a.length || (a.isSemantic ? -1 : 1));
 
-        const tokens = [];
         let currentPos = lineStartOffset;
         const visibleEndCol = startCol + width;
 
@@ -187,13 +240,13 @@ export default {
             const gapStart = Math.max(startCol, currentPos - lineStartOffset);
             const gapEnd = Math.min(visibleEndCol, span.start - lineStartOffset);
             if (gapEnd > gapStart) {
-              tokens.push({ x: gapStart - startCol, content: content.slice(gapStart, gapEnd), color: '#ffffff' });
+              addToken(gapStart - startCol, content.slice(gapStart, gapEnd), '#ffffff');
             }
           }
           const spanStart = Math.max(startCol, span.start - lineStartOffset);
           const spanEnd = Math.min(visibleEndCol, span.start + span.length - lineStartOffset);
           if (spanEnd > spanStart) {
-            tokens.push({ x: spanStart - startCol, content: content.slice(spanStart, spanEnd), color: getColorForClassification(span.type) });
+            addToken(spanStart - startCol, content.slice(spanStart, spanEnd), getColorForClassification(span.type));
           }
           currentPos = span.start + span.length;
         }
@@ -202,11 +255,11 @@ export default {
           const gapStart = Math.max(startCol, currentPos - lineStartOffset);
           const gapEnd = Math.min(visibleEndCol, content.length);
           if (gapEnd > gapStart) {
-            tokens.push({ x: gapStart - startCol, content: content.slice(gapStart, gapEnd), color: '#ffffff' });
+            addToken(gapStart - startCol, content.slice(gapStart, gapEnd), '#ffffff');
           }
         }
 
-        return tokens.map(t => <tui-text x={t.x} content={t.content} color={t.color} />);
+        return tokens.map(t => <tui-text x={t.x} content={t.content} color={t.color} bg_color={t.bg_color} />);
       }
     });
 
