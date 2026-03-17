@@ -5,6 +5,7 @@ import Preview from './components/Preview';
 import { readFile, writeFile, listFiles, deleteFile } from './lib/opfs';
 import JSZip from 'jszip';
 import * as Comlink from 'comlink';
+import { getInitialEditorType, EditorType } from './lib/device';
 
 const DEFAULT_IMPORT_MAP = {
   "imports": {
@@ -39,7 +40,14 @@ export default function App() {
   const [isCompiling, setIsCompiling] = createSignal(false);
   const [activeView, setActiveView] = createSignal<'code' | 'preview'>('code');
   const [isSidebarOpen, setIsSidebarOpen] = createSignal(true);
+  const [isMenuOpen, setIsMenuOpen] = createSignal(false);
+  const [editorType, setEditorType] = createSignal<EditorType>(getInitialEditorType());
   const [importMap, setImportMap] = createSignal(JSON.stringify(DEFAULT_IMPORT_MAP, null, 2));
+
+  const handleEditorChange = (type: EditorType) => {
+    setEditorType(type);
+    localStorage.setItem('preferred-editor', type);
+  };
   const [lastExportName, setLastExportName] = createSignal('solid-playground-opfs.zip');
   const [lspWorker, setLspWorker] = createSignal<any>(null);
   let importInput: HTMLInputElement | undefined;
@@ -433,10 +441,28 @@ export default function App() {
     }
   };
 
+  const resetToDefaults = async () => {
+    if (confirm('Reset to defaults?')) {
+      const allFiles = await listFiles();
+      for (const f of allFiles) await deleteFile(f);
+      for (const [name, content] of Object.entries(DEFAULT_FILES)) {
+        await writeFile(name, content);
+        const worker = lspWorker()?.instance;
+        if (worker && (name.endsWith('.tsx') || name.endsWith('.ts'))) {
+          await worker.updateFile({ path: normalizeFilePath(name), code: content });
+        }
+      }
+      await writeFile('import-map.json', JSON.stringify(DEFAULT_IMPORT_MAP, null, 2));
+      setFiles(Object.keys(DEFAULT_FILES));
+      await handleFileSwitch('main.tsx', false);
+      setImportMap(JSON.stringify(DEFAULT_IMPORT_MAP, null, 2));
+    }
+  };
+
   return (
     <div class="flex flex-col h-full bg-[#1e1e1e] text-[#cccccc] font-sans overflow-hidden">
       {/* Top Bar */}
-      <header class="flex items-center justify-between h-[calc(3rem+env(safe-area-inset-top))] px-4 pt-[env(safe-area-inset-top)] border-b border-[#333333] bg-[#252526] shrink-0">
+      <header class="flex items-center justify-between h-[calc(3rem+env(safe-area-inset-top))] px-4 pt-[env(safe-area-inset-top)] border-b border-[#333333] bg-[#252526] shrink-0 relative">
         <div class="flex items-center space-x-3 overflow-hidden">
           <div class="flex items-center space-x-2 shrink-0">
             <svg class="w-5 h-5 text-[#76b3e1]" viewBox="0 0 166 155" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -444,14 +470,53 @@ export default function App() {
             </svg>
             <h1 class="text-[13px] font-bold tracking-tight text-[#f3f3f3] hidden sm:block">SOLID 2.0 PLAYGROUND</h1>
           </div>
-          <nav class="flex space-x-3 text-[12px] overflow-hidden whitespace-nowrap">
+          <nav class="hidden sm:flex space-x-3 text-[12px] overflow-hidden whitespace-nowrap">
             <button class="hover:text-white shrink-0">Share</button>
             <button onClick={exportOPFS} class="hover:text-white shrink-0">Export</button>
             <button onClick={triggerImport} class="hover:text-white shrink-0">Import</button>
           </nav>
+          
+          <button 
+            onClick={() => setIsMenuOpen(!isMenuOpen())}
+            class="sm:hidden p-1 text-gray-400 hover:text-white transition-colors"
+          >
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7" />
+            </svg>
+          </button>
         </div>
+
+        {/* Mobile Dropdown Menu */}
+        <Show when={isMenuOpen()}>
+          <div 
+            class="sm:hidden absolute top-[calc(3rem+env(safe-area-inset-top))] left-4 right-4 z-[100] bg-[#252526] border border-[#333333] rounded shadow-2xl py-2 mt-1"
+            onClick={() => setIsMenuOpen(false)}
+          >
+            <button class="w-full text-left px-4 py-2.5 text-[13px] hover:bg-[#2a2d2e] transition-colors">Share</button>
+            <button onClick={exportOPFS} class="w-full text-left px-4 py-2.5 text-[13px] hover:bg-[#2a2d2e] transition-colors">Export</button>
+            <button onClick={triggerImport} class="w-full text-left px-4 py-2.5 text-[13px] hover:bg-[#2a2d2e] transition-colors">Import</button>
+            <div class="h-px bg-[#333333] my-1 mx-2" />
+            <button onClick={createNewFile} class="w-full text-left px-4 py-2.5 text-[13px] hover:bg-[#2a2d2e] transition-colors">New File</button>
+            <button onClick={resetToDefaults} class="w-full text-left px-4 py-2.5 text-[13px] text-red-400 hover:bg-[#2a2d2e] transition-colors">Reset to Defaults</button>
+          </div>
+          <div 
+            class="fixed inset-0 z-[90] sm:hidden" 
+            onClick={() => setIsMenuOpen(false)} 
+          />
+        </Show>
         
         <div class="flex items-center space-x-2">
+          {/* Mobile Editor Selector */}
+          <select 
+            value={editorType()} 
+            onInput={(e) => handleEditorChange((e.target as HTMLSelectElement).value as EditorType)}
+            class="md:hidden bg-[#333333] text-white text-[11px] px-2 py-1 rounded border border-[#444444] focus:outline-none focus:border-[#007acc]"
+          >
+            <option value="monaco">Monaco</option>
+            <option value="codemirror">CodeMirror</option>
+            <option value="net-vim">net-vim</option>
+          </select>
+
           {/* Mobile View Toggle */}
           <div class="flex md:hidden bg-[#333333] rounded p-0.5">
             <button 
@@ -518,30 +583,14 @@ export default function App() {
             </span>
           </div>
         </div>
-        <div class="flex items-center px-2 space-x-2 border-l border-[#333333] h-full bg-[#252526]">
+        <div class="hidden sm:flex items-center px-2 space-x-2 border-l border-[#333333] h-full bg-[#252526]">
           <button 
             onClick={createNewFile} 
             class="p-1 hover:text-white text-gray-500 text-lg transition-colors"
             title="New File"
           >+</button>
           <button 
-            onClick={async () => {
-              if (confirm('Reset to defaults?')) {
-                const allFiles = await listFiles();
-                for (const f of allFiles) await deleteFile(f);
-                for (const [name, content] of Object.entries(DEFAULT_FILES)) {
-                  await writeFile(name, content);
-                  const worker = lspWorker()?.instance;
-                  if (worker && (name.endsWith('.tsx') || name.endsWith('.ts'))) {
-                    await worker.updateFile({ path: normalizeFilePath(name), code: content });
-                  }
-                }
-                await writeFile('import-map.json', JSON.stringify(DEFAULT_IMPORT_MAP, null, 2));
-                setFiles(Object.keys(DEFAULT_FILES));
-                await handleFileSwitch('main.tsx', false);
-                setImportMap(JSON.stringify(DEFAULT_IMPORT_MAP, null, 2));
-              }
-            }}
+            onClick={resetToDefaults}
             class="text-[11px] text-gray-500 hover:text-red-400 transition-colors px-1"
           >
             Reset
@@ -564,6 +613,8 @@ export default function App() {
                 fileName={activeFile()}
                 lspWorker={lspWorker()}
                 allFiles={files()}
+                editorType={editorType()}
+                onEditorTypeChange={handleEditorChange}
               />
             </Show>
             {/* Mobile Compiling Indicator */}

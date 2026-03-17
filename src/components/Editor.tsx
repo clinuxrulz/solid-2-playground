@@ -1,6 +1,6 @@
-import { createSignal, Show, lazy, Suspense } from 'solid-js';
+import { Show, lazy, Suspense } from 'solid-js';
 import CodeMirrorEditor from './CodeMirrorEditor';
-import { getInitialEditorType, EditorType } from '../lib/device';
+import { EditorType } from '../lib/device';
 
 const MonacoEditor = lazy(() => import('./MonacoEditor'));
 const NetVimEditor = lazy(() => import('./NetVimEditor'));
@@ -11,23 +11,22 @@ interface EditorProps {
   fileName: string;
   lspWorker: any;
   allFiles: string[];
+  editorType: EditorType;
+  onEditorTypeChange: (type: EditorType) => void;
 }
 
 export default function Editor(props: EditorProps) {
-  const [editorType, setEditorType] = createSignal<EditorType>(getInitialEditorType());
-
   const handleEditorChange = (e: Event) => {
     const type = (e.target as HTMLSelectElement).value as EditorType;
-    setEditorType(type);
-    localStorage.setItem('preferred-editor', type);
+    props.onEditorTypeChange(type);
   };
 
   return (
     <div class="flex flex-col h-full overflow-hidden">
-      <div class="flex items-center justify-end px-2 py-1 bg-[#2d2d2d] border-b border-[#333333] shrink-0">
+      <div class="hidden md:flex items-center justify-end px-2 py-1 bg-[#2d2d2d] border-b border-[#333333] shrink-0">
         <label class="text-[10px] text-gray-400 mr-2 uppercase font-medium">Editor:</label>
         <select 
-          value={editorType()} 
+          value={props.editorType} 
           onInput={handleEditorChange}
           class="bg-[#3c3c3c] text-white text-[11px] px-1 py-0.5 rounded border border-[#444444] focus:outline-none focus:border-[#007acc]"
         >
@@ -38,9 +37,9 @@ export default function Editor(props: EditorProps) {
       </div>
       <div class="flex-1 overflow-hidden relative">
         <Show 
-          when={editorType() === 'monaco'} 
+          when={props.editorType === 'monaco'} 
           fallback={
-            <Show when={editorType() === 'net-vim'} fallback={
+            <Show when={props.editorType === 'net-vim'} fallback={
               <CodeMirrorEditor 
                 code={props.code} 
                 onCodeChange={props.onCodeChange} 
