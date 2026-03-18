@@ -2,11 +2,6 @@
 import { render } from 'solid-js/web';
 import './index.css';
 import App from './App';
-import { registerSW } from 'virtual:pwa-register';
-
-if (import.meta.env.PROD || (import.meta.env.DEV && (window as any).ENABLE_PWA_DEV)) {
-  registerSW({ immediate: true });
-}
 
 const root = document.getElementById('root');
 

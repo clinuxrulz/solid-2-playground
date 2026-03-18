@@ -6,6 +6,7 @@ import { readFile, writeFile, listFiles, deleteFile } from './lib/opfs';
 import JSZip from 'jszip';
 import * as Comlink from 'comlink';
 import { getInitialEditorType, EditorType } from './lib/device';
+import { registerSW } from 'virtual:pwa-register';
 
 const DEFAULT_IMPORT_MAP = {
   "imports": {
@@ -43,6 +44,8 @@ export default function App() {
   const [isMenuOpen, setIsMenuOpen] = createSignal(false);
   const [editorType, setEditorType] = createSignal<EditorType>(getInitialEditorType());
   const [importMap, setImportMap] = createSignal(JSON.stringify(DEFAULT_IMPORT_MAP, null, 2));
+  const [needRefresh, setNeedRefresh] = createSignal(false);
+  const [updateSW, setUpdateSW] = createSignal<() => Promise<void> | undefined>();
 
   const handleEditorChange = (type: EditorType) => {
     setEditorType(type);
@@ -248,6 +251,15 @@ export default function App() {
   };
 
   onMount(async () => {
+    if (import.meta.env.PROD || (import.meta.env.DEV && (window as any).ENABLE_PWA_DEV)) {
+      const update = registerSW({
+        onNeedRefresh() {
+          setNeedRefresh(true);
+        },
+      });
+      setUpdateSW(() => update);
+    }
+
     // Initialize compiler worker
     compilerWorker = new Worker(new URL('./workers/compiler.ts', import.meta.url), {
       type: 'module',
@@ -462,13 +474,17 @@ export default function App() {
   return (
     <div class="flex flex-col h-full bg-[#1e1e1e] text-[#cccccc] font-sans overflow-hidden">
       {/* Top Bar */}
-      <header class="flex items-center justify-between h-[calc(3rem+env(safe-area-inset-top))] px-4 pt-[env(safe-area-inset-top)] border-b border-[#333333] bg-[#252526] shrink-0 relative">
+      <header class="flex items-center justify-between h-[calc(3rem+env(safe-area-inset-top))] px-0 pt-[env(safe-area-inset-top)] border-b border-[#333333] bg-[#252526] shrink-0 relative">
         <div class="flex items-center space-x-3 overflow-hidden">
           <div class="flex items-center space-x-2 shrink-0">
-            <svg class="w-5 h-5 text-[#76b3e1]" viewBox="0 0 166 155" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M163 35L15 137C11.6667 139 3.4 141.4 1 133L1 5C1 1.66667 3.4 1 11 1L155 1C158.333 1 163 3.4 163 11V35Z" fill="currentColor"/>
-            </svg>
-            <h1 class="text-[13px] font-bold tracking-tight text-[#f3f3f3] hidden sm:block">SOLID 2.0 PLAYGROUND</h1>
+            <Show when={needRefresh()}>
+              <button
+                class="bg-[#007acc] hover:bg-[#0062a3] text-white text-[11px] px-2 py-0.5 rounded transition-colors"
+                onClick={() => updateSW()?.()}
+              >
+                New Version
+              </button>
+            </Show>
           </div>
           <nav class="hidden sm:flex space-x-3 text-[12px] overflow-hidden whitespace-nowrap">
             <button class="hover:text-white shrink-0">Share</button>
