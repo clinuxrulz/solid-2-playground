@@ -182,10 +182,15 @@ export default {
         const addToken = (x: number, tokenContent: string, color: string) => {
           for (let i = 0; i < tokenContent.length; i++) {
             const col = x + i;
-            const isHighlighted = col >= highlightStart && col < highlightEnd;
+            // Add startCol to handle horizontal scroll and word wrap
+            const logicalCol = startCol + col;
+            const isHighlighted = logicalCol >= highlightStart && logicalCol < highlightEnd;
             
             let j = i + 1;
-            while (j < tokenContent.length && (x + j >= highlightStart && x + j < highlightEnd) === isHighlighted) {
+            while (j < tokenContent.length) {
+              const nextLogicalCol = startCol + x + j;
+              const nextIsHighlighted = nextLogicalCol >= highlightStart && nextLogicalCol < highlightEnd;
+              if (nextIsHighlighted !== isHighlighted) break;
               j++;
             }
             
