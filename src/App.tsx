@@ -45,7 +45,7 @@ export default function App() {
   const [editorType, setEditorType] = createSignal<EditorType>(getInitialEditorType());
   const [importMap, setImportMap] = createSignal(JSON.stringify(DEFAULT_IMPORT_MAP, null, 2));
   const [needRefresh, setNeedRefresh] = createSignal(false);
-  const [updateSW, setUpdateSW] = createSignal<() => Promise<void> | undefined>();
+  const [updateSW, setUpdateSW] = createSignal<(reloadPage: boolean) => Promise<void> | undefined>();
 
   const handleEditorChange = (type: EditorType) => {
     setEditorType(type);
@@ -480,7 +480,7 @@ export default function App() {
             <Show when={needRefresh()}>
               <button
                 class="bg-[#007acc] hover:bg-[#0062a3] text-white text-[11px] px-2 py-0.5 rounded transition-colors"
-                onClick={() => updateSW()?.()}
+                onClick={() => updateSW()?.(true)}
               >
                 New Version
               </button>

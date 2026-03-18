@@ -28,7 +28,7 @@ export default defineConfig({
     tailwindcss(),
     solidPlugin(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       injectRegister: false,
       manifestFilename: 'manifest.json',
       devOptions: {
