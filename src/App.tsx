@@ -2,7 +2,8 @@ import { createSignal, onMount, createEffect, onCleanup, For, Show } from 'solid
 import Resizable from '@corvu/resizable';
 import Editor from './components/Editor';
 import Preview from './components/Preview';
-import { readFile, writeFile, listFiles, deleteFile } from './lib/opfs';
+import { readFile as opfsReadFile, writeFile as opfsWriteFile, listFiles as opfsListFiles, deleteFile as opfsDeleteFile } from './lib/opfs';
+import { createBridgeFS, BridgeFS, BridgeConfig } from './lib/bridge-fs';
 import JSZip from 'jszip';
 import * as Comlink from 'comlink';
 import { getInitialEditorType, EditorType } from './lib/device';
@@ -46,6 +47,12 @@ export default function App() {
   const [importMap, setImportMap] = createSignal(JSON.stringify(DEFAULT_IMPORT_MAP, null, 2));
   const [needRefresh, setNeedRefresh] = createSignal(false);
   const [updateSW, setUpdateSW] = createSignal<(reloadPage: boolean) => Promise<void> | undefined>();
+  const [bridgeConfig, setBridgeConfig] = createSignal<BridgeConfig | null>(null);
+  const [bridgeFS, setBridgeFS] = createSignal<BridgeFS | null>(null);
+  const [showBridgeModal, setShowBridgeModal] = createSignal(false);
+  const [bridgePort, setBridgePort] = createSignal('8080');
+  const [bridgeKey, setBridgeKey] = createSignal('');
+  const [isConnecting, setIsConnecting] = createSignal(false);
 
   const handleEditorChange = (type: EditorType) => {
     setEditorType(type);
@@ -76,6 +83,103 @@ export default function App() {
       }
     }
     return '/' + stack.join('/');
+  };
+
+  const readFile = async (fileName: string): Promise<string | null> => {
+    if (bridgeFS()) {
+      return bridgeFS()!.readFile(fileName);
+    }
+    return opfsReadFile(fileName);
+  };
+
+  const writeFile = async (fileName: string, content: string) => {
+    if (bridgeFS()) {
+      return bridgeFS()!.writeFile(fileName, content);
+    }
+    return opfsWriteFile(fileName, content);
+  };
+
+  const listFiles = async (): Promise<string[]> => {
+    if (bridgeFS()) {
+      return bridgeFS()!.listDirectory('/');
+    }
+    return opfsListFiles();
+  };
+
+  const deleteFile = async (fileName: string) => {
+    if (bridgeFS()) {
+      await bridgeFS()!.writeFile(fileName, '');
+      return;
+    }
+    return opfsDeleteFile(fileName);
+  };
+
+  const connectToBridge = async () => {
+    const port = bridgePort().trim() || '8080';
+    const key = bridgeKey().trim();
+    
+    if (!key) {
+      alert('Please enter a security key');
+      return;
+    }
+    
+    setIsConnecting(true);
+    try {
+      const baseUrl = `http://localhost:${port}`;
+      const fs = createBridgeFS({ port, key, baseUrl });
+      
+      const testConnection = await fs.listDirectory('/');
+      if (testConnection.length >= 0) {
+        setBridgeConfig({ port, key, baseUrl });
+        setBridgeFS(() => fs);
+        setShowBridgeModal(false);
+        setBridgeKey('');
+        
+        const files = await listFiles();
+        setFiles(files.filter(f => f !== 'import-map.json'));
+        
+        if (files.length > 0) {
+          const firstFile = files.find(f => f !== 'import-map.json');
+          if (firstFile) {
+            setActiveFile(firstFile);
+            const content = await readFile(firstFile);
+            setCode(content || '');
+          }
+        }
+      }
+    } catch (err) {
+      alert('Failed to connect to bridge. Please check the port and key.');
+      console.error('Bridge connection error:', err);
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const disconnectFromBridge = () => {
+    setBridgeConfig(null);
+    setBridgeFS(null);
+    setActiveFile('main.tsx');
+    setCode('');
+    setFiles([]);
+    onMount(async () => {
+      const existingFiles = await opfsListFiles();
+      if (existingFiles.length > 0) {
+        setFiles(existingFiles.filter(f => f !== 'import-map.json'));
+        const firstFile = existingFiles.find(f => f !== 'import-map.json');
+        if (firstFile) {
+          setActiveFile(firstFile);
+          const content = await opfsReadFile(firstFile);
+          setCode(content || '');
+        }
+      } else {
+        for (const [name, content] of Object.entries(DEFAULT_FILES)) {
+          await opfsWriteFile(name, content);
+        }
+        setFiles(Object.keys(DEFAULT_FILES));
+        setActiveFile('main.tsx');
+        setCode(DEFAULT_FILES['main.tsx']);
+      }
+    });
   };
 
   const resolveModuleSpecifier = (importer: string, specifier: string, knownFiles: Set<string>) => {
@@ -490,6 +594,9 @@ export default function App() {
             <button class="hover:text-white shrink-0">Share</button>
             <button onClick={exportOPFS} class="hover:text-white shrink-0">Export</button>
             <button onClick={triggerImport} class="hover:text-white shrink-0">Import</button>
+            <Show when={bridgeConfig()} fallback={<button onClick={() => setShowBridgeModal(true)} class="hover:text-white shrink-0 text-[#76b3e1]">Bridge</button>}>
+              <button onClick={disconnectFromBridge} class="hover:text-white shrink-0 text-[#4ec9b0]">Bridge: Connected</button>
+            </Show>
           </nav>
           
           <button 
@@ -511,6 +618,11 @@ export default function App() {
             <button class="w-full text-left px-4 py-2.5 text-[13px] hover:bg-[#2a2d2e] transition-colors">Share</button>
             <button onClick={exportOPFS} class="w-full text-left px-4 py-2.5 text-[13px] hover:bg-[#2a2d2e] transition-colors">Export</button>
             <button onClick={triggerImport} class="w-full text-left px-4 py-2.5 text-[13px] hover:bg-[#2a2d2e] transition-colors">Import</button>
+            <Show when={bridgeConfig()} fallback={
+              <button onClick={() => { setIsMenuOpen(false); setShowBridgeModal(true); }} class="w-full text-left px-4 py-2.5 text-[13px] text-[#76b3e1] hover:bg-[#2a2d2e] transition-colors">Connect to Bridge</button>
+            }>
+              <button onClick={disconnectFromBridge} class="w-full text-left px-4 py-2.5 text-[13px] text-[#4ec9b0] hover:bg-[#2a2d2e] transition-colors">Bridge: Connected (Tap to disconnect)</button>
+            </Show>
             <div class="h-px bg-[#333333] my-1 mx-2" />
             <button onClick={createNewFile} class="w-full text-left px-4 py-2.5 text-[13px] hover:bg-[#2a2d2e] transition-colors">New File</button>
             <button onClick={resetToDefaults} class="w-full text-left px-4 py-2.5 text-[13px] text-red-400 hover:bg-[#2a2d2e] transition-colors">Reset to Defaults</button>
@@ -566,6 +678,56 @@ export default function App() {
         style={{ display: 'none' }}
         onChange={importOPFS}
       />
+
+      {/* Bridge Connection Modal */}
+      <Show when={showBridgeModal()}>
+        <div class="fixed inset-0 z-[200] flex items-center justify-center bg-black/70">
+          <div class="bg-[#252526] border border-[#333333] rounded-lg w-[90%] max-w-md p-6 shadow-2xl">
+            <h3 class="text-[16px] font-medium text-white mb-4">Connect to Bridge</h3>
+            <p class="text-[12px] text-gray-400 mb-4">
+              Connect to a bridge server running on your local machine to access files directly.
+              Start the bridge server and use the security key it provides.
+            </p>
+            <div class="space-y-4">
+              <div>
+                <label class="block text-[12px] text-gray-400 mb-1">Port</label>
+                <input
+                  type="text"
+                  value={bridgePort()}
+                  onInput={(e) => setBridgePort(e.target.value)}
+                  placeholder="8080"
+                  class="w-full bg-[#1e1e1e] border border-[#444444] rounded px-3 py-2 text-[13px] text-white focus:outline-none focus:border-[#007acc]"
+                />
+              </div>
+              <div>
+                <label class="block text-[12px] text-gray-400 mb-1">Security Key</label>
+                <input
+                  type="text"
+                  value={bridgeKey()}
+                  onInput={(e) => setBridgeKey(e.target.value)}
+                  placeholder="Enter the key from the bridge server"
+                  class="w-full bg-[#1e1e1e] border border-[#444444] rounded px-3 py-2 text-[13px] text-white focus:outline-none focus:border-[#007acc]"
+                />
+              </div>
+            </div>
+            <div class="flex justify-end space-x-3 mt-6">
+              <button
+                onClick={() => { setShowBridgeModal(false); setBridgeKey(''); }}
+                class="px-4 py-2 text-[12px] text-gray-400 hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={connectToBridge}
+                disabled={isConnecting()}
+                class="px-4 py-2 text-[12px] bg-[#007acc] text-white rounded hover:bg-[#0062a3] transition-colors disabled:opacity-50"
+              >
+                {isConnecting() ? 'Connecting...' : 'Connect'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Show>
 
       {/* File Tabs */}
       <div class="flex items-center h-9 bg-[#252526] border-b border-[#333333] overflow-hidden shrink-0">
