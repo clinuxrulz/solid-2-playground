@@ -6,6 +6,7 @@ export interface BridgeFS {
 }
 
 export interface BridgeConfig {
+  host: string;
   port: string;
   key: string;
   baseUrl: string;

@@ -51,6 +51,7 @@ export default function App() {
   const [bridgeFS, setBridgeFS] = createSignal<BridgeFS | null>(null);
   const [showBridgeModal, setShowBridgeModal] = createSignal(false);
   const [bridgePort, setBridgePort] = createSignal('8080');
+  const [bridgeHost, setBridgeHost] = createSignal('127.0.0.1');
   const [bridgeKey, setBridgeKey] = createSignal('');
   const [isConnecting, setIsConnecting] = createSignal(false);
   const [lastSavedCode, setLastSavedCode] = createSignal('');
@@ -117,6 +118,7 @@ export default function App() {
 
   const connectToBridge = async () => {
     const port = bridgePort().trim() || '8080';
+    const host = bridgeHost().trim() || '127.0.0.1';
     const key = bridgeKey().trim();
     
     if (!key) {
@@ -126,12 +128,12 @@ export default function App() {
     
     setIsConnecting(true);
     try {
-      const baseUrl = `http://localhost:${port}`;
-      const fs = createBridgeFS({ port, key, baseUrl });
+      const baseUrl = `http://${host}:${port}`;
+      const fs = createBridgeFS({ host, port, key, baseUrl });
       
       const testConnection = await fs.listDirectory('/');
       if (testConnection && Array.isArray(testConnection)) {
-        setBridgeConfig({ port, key, baseUrl });
+        setBridgeConfig({ host, port, key, baseUrl });
         setBridgeFS(() => fs);
         setShowBridgeModal(false);
         setBridgeKey('');
@@ -742,15 +744,27 @@ export default function App() {
               Start the bridge server and use the security key it provides.
             </p>
             <div class="space-y-4">
-              <div>
-                <label class="block text-[12px] text-gray-400 mb-1">Port</label>
-                <input
-                  type="text"
-                  value={bridgePort()}
-                  onInput={(e) => setBridgePort(e.target.value)}
-                  placeholder="8080"
-                  class="w-full bg-[#1e1e1e] border border-[#444444] rounded px-3 py-2 text-[13px] text-white focus:outline-none focus:border-[#007acc]"
-                />
+              <div class="flex gap-4">
+                <div class="flex-[2]">
+                  <label class="block text-[12px] text-gray-400 mb-1">Host</label>
+                  <input
+                    type="text"
+                    value={bridgeHost()}
+                    onInput={(e) => setBridgeHost(e.target.value)}
+                    placeholder="127.0.0.1"
+                    class="w-full bg-[#1e1e1e] border border-[#444444] rounded px-3 py-2 text-[13px] text-white focus:outline-none focus:border-[#007acc]"
+                  />
+                </div>
+                <div class="flex-1">
+                  <label class="block text-[12px] text-gray-400 mb-1">Port</label>
+                  <input
+                    type="text"
+                    value={bridgePort()}
+                    onInput={(e) => setBridgePort(e.target.value)}
+                    placeholder="8080"
+                    class="w-full bg-[#1e1e1e] border border-[#444444] rounded px-3 py-2 text-[13px] text-white focus:outline-none focus:border-[#007acc]"
+                  />
+                </div>
               </div>
               <div>
                 <label class="block text-[12px] text-gray-400 mb-1">Security Key</label>
