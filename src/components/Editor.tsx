@@ -1,4 +1,4 @@
-import { Show, lazy, Suspense } from 'solid-js';
+import { Show, lazy, Suspense, createSignal, createEffect, Switch, Match } from 'solid-js';
 import CodeMirrorEditor from './CodeMirrorEditor';
 import { EditorType } from '../lib/device';
 
@@ -13,9 +13,18 @@ interface EditorProps {
   allFiles: string[];
   editorType: EditorType;
   onEditorTypeChange: (type: EditorType) => void;
+  bridgeFS?: any;
 }
 
 export default function Editor(props: EditorProps) {
+  const [netVimMountKey, setNetVimMountKey] = createSignal(0);
+  
+  createEffect(() => {
+    if (props.bridgeFS) {
+      setNetVimMountKey(k => k + 1);
+    }
+  });
+
   const handleEditorChange = (e: Event) => {
     const type = (e.target as HTMLSelectElement).value as EditorType;
     props.onEditorTypeChange(type);
@@ -36,38 +45,51 @@ export default function Editor(props: EditorProps) {
         </select>
       </div>
       <div class="flex-1 overflow-hidden relative">
-        <Show 
-          when={props.editorType === 'monaco'} 
-          fallback={
-            <Show when={props.editorType === 'net-vim'} fallback={
-              <CodeMirrorEditor 
+        <Switch>
+          <Match when={props.editorType === 'monaco'}>
+            <Suspense fallback={<div class="p-4 text-gray-400">Loading Monaco...</div>}>
+              <MonacoEditor 
                 code={props.code} 
                 onCodeChange={props.onCodeChange} 
                 fileName={props.fileName} 
-                lspWorker={props.lspWorker} 
+                lspWorker={props.lspWorker}
+                allFiles={props.allFiles}
               />
-            }>
-               <Suspense fallback={<div class="p-4 text-gray-400">Loading Net-Vim...</div>}>
-                <NetVimEditor 
-                  code={props.code} 
-                  onCodeChange={props.onCodeChange} 
-                  fileName={props.fileName} 
-                  lspWorker={props.lspWorker} 
-                />
-              </Suspense>
-            </Show>
-          }
-        >
-          <Suspense fallback={<div class="p-4 text-gray-400">Loading Monaco...</div>}>
-            <MonacoEditor 
+            </Suspense>
+          </Match>
+          <Match when={props.editorType === 'codemirror'}>
+            <CodeMirrorEditor 
               code={props.code} 
               onCodeChange={props.onCodeChange} 
               fileName={props.fileName} 
-              lspWorker={props.lspWorker}
-              allFiles={props.allFiles}
+              lspWorker={props.lspWorker} 
             />
-          </Suspense>
-        </Show>
+          </Match>
+          <Match when={props.editorType === 'net-vim'}>
+            <Suspense fallback={<div class="p-4 text-gray-400">Loading Net-Vim...</div>}>
+              <Switch>
+                <Match when={netVimMountKey() % 2 === 0}>
+                  <NetVimEditor 
+                    code={props.code} 
+                    onCodeChange={props.onCodeChange} 
+                    fileName={props.fileName} 
+                    lspWorker={props.lspWorker}
+                    bridgeFS={props.bridgeFS}
+                  />
+                </Match>
+                <Match when={netVimMountKey() % 2 !== 0}>
+                  <NetVimEditor 
+                    code={props.code} 
+                    onCodeChange={props.onCodeChange} 
+                    fileName={props.fileName} 
+                    lspWorker={props.lspWorker}
+                    bridgeFS={props.bridgeFS}
+                  />
+                </Match>
+              </Switch>
+            </Suspense>
+          </Match>
+        </Switch>
       </div>
     </div>
   );

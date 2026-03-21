@@ -53,6 +53,7 @@ export default function App() {
   const [bridgePort, setBridgePort] = createSignal('8080');
   const [bridgeKey, setBridgeKey] = createSignal('');
   const [isConnecting, setIsConnecting] = createSignal(false);
+  const [lastSavedCode, setLastSavedCode] = createSignal('');
 
   const handleEditorChange = (type: EditorType) => {
     setEditorType(type);
@@ -129,21 +130,65 @@ export default function App() {
       const fs = createBridgeFS({ port, key, baseUrl });
       
       const testConnection = await fs.listDirectory('/');
-      if (testConnection.length >= 0) {
+      if (testConnection && Array.isArray(testConnection)) {
         setBridgeConfig({ port, key, baseUrl });
         setBridgeFS(() => fs);
         setShowBridgeModal(false);
         setBridgeKey('');
         
-        const files = await listFiles();
-        setFiles(files.filter(f => f !== 'import-map.json'));
+        const nonImportMapFiles = testConnection.filter(f => f !== 'import-map.json');
+        setFiles(nonImportMapFiles);
         
-        if (files.length > 0) {
-          const firstFile = files.find(f => f !== 'import-map.json');
-          if (firstFile) {
-            setActiveFile(firstFile);
-            const content = await readFile(firstFile);
-            setCode(content || '');
+        // Read all files from bridge and sync to LSP/compiler
+        const worker = lspWorker()?.instance;
+        const fileContents: Record<string, string> = {};
+        
+        for (const file of nonImportMapFiles) {
+          const content = await fs.readFile(file);
+          if (content !== null) {
+            fileContents[file] = content;
+            // Sync to LSP worker
+            if (worker && (file.endsWith('.tsx') || file.endsWith('.ts'))) {
+              await worker.updateFile({ path: normalizeFilePath(file), code: content });
+            }
+          }
+        }
+        
+        // Read import-map.json if exists
+        const importMapContent = await fs.readFile('import-map.json');
+        if (importMapContent !== null) {
+          setImportMap(importMapContent);
+        }
+        
+        // Set first file as active and load content
+        if (nonImportMapFiles.length > 0) {
+          const firstFile = nonImportMapFiles.find(f => f !== 'import-map.json') || nonImportMapFiles[0];
+          setActiveFile(firstFile);
+          const content = fileContents[firstFile];
+          if (content !== undefined) {
+            setCode(content);
+            setLastSavedCode(content);
+          }
+        }
+        
+        // Trigger compilation for all TS/TSX files
+        if (compilerWorker) {
+          const tsFiles = nonImportMapFiles.filter(f => f.endsWith('.tsx') || f.endsWith('.ts'));
+          if (tsFiles.length > 0) {
+            const knownFiles = new Set(tsFiles.map(f => normalizeFilePath(f)));
+            const sourceFiles: Record<string, string> = {};
+            
+            for (const file of tsFiles) {
+              const normalized = normalizeFilePath(file);
+              const rawContent = fileContents[file] || '';
+              const compilerKey = normalized.replace(/^\/+/, '');
+              sourceFiles[compilerKey] = rewriteFileImports(normalized, rawContent, knownFiles);
+            }
+            
+            compilerWorker.postMessage({
+              files: sourceFiles,
+              entry: 'main.tsx'
+            });
           }
         }
       }
@@ -440,6 +485,7 @@ export default function App() {
       const savedCode = await readFile(activeFile());
       if (savedCode !== null) {
         setCode(savedCode);
+        setLastSavedCode(savedCode);
       }
     }
   });
@@ -496,19 +542,25 @@ export default function App() {
           await worker.updateFile({ path: normalizeFilePath(fileName), code: currentCode });
         }
 
-        // Save to OPFS
-        writeFile(fileName, currentCode);
+        if (currentCode && currentCode !== lastSavedCode()) {
+          writeFile(fileName, currentCode);
+          setLastSavedCode(currentCode);
+        }
       }
     }, 500);
   });
 
   const handleFileSwitch = async (name: string, saveCurrent = true) => {
-    // Save current file first
+    // Save current file first (only if content changed)
     if (saveCurrent && activeFile() && (files().includes(activeFile()) || activeFile() === 'import-map.json')) {
-      await writeFile(activeFile(), code());
+      const currentCode = code();
+      if (currentCode && currentCode !== lastSavedCode()) {
+        await writeFile(activeFile(), currentCode);
+        setLastSavedCode(currentCode);
+      }
       const worker = lspWorker()?.instance;
       if (worker && (activeFile().endsWith('.tsx') || activeFile().endsWith('.ts'))) {
-        await worker.updateFile({ path: activeFile(), code: code() });
+        await worker.updateFile({ path: activeFile(), code: currentCode || '' });
       }
     }
     
@@ -517,6 +569,7 @@ export default function App() {
     if (content !== null) {
       setActiveFile(name);
       setCode(content);
+      setLastSavedCode(content);
     }
   };
 
@@ -793,6 +846,7 @@ export default function App() {
                 allFiles={files()}
                 editorType={editorType()}
                 onEditorTypeChange={handleEditorChange}
+                bridgeFS={bridgeFS()}
               />
             </Show>
             {/* Mobile Compiling Indicator */}

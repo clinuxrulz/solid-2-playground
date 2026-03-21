@@ -2,22 +2,25 @@ import { onCleanup, onMount, createEffect, createSignal } from 'solid-js';
 import { initNetVim, VimAPI, PRELUDE_PLUGINS, FileSystem } from '@net-vim/core';
 // @ts-ignore
 import lspAdapterSource from '../lib/netvim-adapter.tsx?raw';
+import type { BridgeFS } from '../lib/bridge-fs';
 
 interface NetVimEditorProps {
   code: string;
   onCodeChange: (code: string) => void;
   fileName: string;
   lspWorker: any;
+  bridgeFS?: BridgeFS | null;
 }
 
 export default function NetVimEditor(props: NetVimEditorProps) {
   let editorParent: HTMLDivElement | undefined;
   const [vimApi, setVimApi] = createSignal<VimAPI | undefined>();
   const [hasSetupLSP, setHasSetupLSP] = createSignal(false);
+  const [currentFSMode, setCurrentFSMode] = createSignal<'opfs' | 'bridge'>('opfs');
   let disposeFn: (() => void) | undefined;
   let isInternalChange = false;
 
-  const customFS: FileSystem = {
+  const createOPFSFileSystem = (): FileSystem => ({
     readFile: async (path: string) => {
       if (path.startsWith('.config/')) return null;
       try {
@@ -84,13 +87,40 @@ export default function NetVimEditor(props: NetVimEditorProps) {
         return false;
       }
     }
-  };
+  });
+
+  const createBridgeFileSystem = (bridgeFS: BridgeFS): FileSystem => ({
+    readFile: async (path: string) => {
+      if (path.startsWith('.config/')) return null;
+      return await bridgeFS.readFile(path);
+    },
+    writeFile: async (path: string, content: string) => {
+      if (path.startsWith('.config/')) return;
+      await bridgeFS.writeFile(path, content);
+    },
+    listDirectory: async (path: string) => {
+      if (path.startsWith('.config/')) return [];
+      return await bridgeFS.listDirectory(path);
+    },
+    isDirectory: async (path: string) => {
+      if (path === '' || path === '.' || path === './') return true;
+      if (path.startsWith('.config/')) return false;
+      return await bridgeFS.isDirectory(path);
+    }
+  });
 
   onMount(async () => {
     if (!editorParent) return;
 
+    const useBridgeFS = !!props.bridgeFS;
+    setCurrentFSMode(useBridgeFS ? 'bridge' : 'opfs');
+
+    const fileSystem = useBridgeFS 
+      ? createBridgeFileSystem(props.bridgeFS!)
+      : createOPFSFileSystem();
+
     const { vim, dispose } = await initNetVim(editorParent, {
-      fileSystem: customFS
+      fileSystem
     });
     const api = vim.getAPI();
     setVimApi(api);
@@ -142,6 +172,23 @@ export default function NetVimEditor(props: NetVimEditorProps) {
     if (api && fileName) {
       if (api.getCurrentFilePath() !== fileName) {
         api.executeCommand(`e ${fileName}`);
+      }
+    }
+  });
+
+  createEffect(() => {
+    const bridgeFS = props.bridgeFS;
+    const api = vimApi();
+    
+    if (api && props.fileName) {
+      const targetMode = bridgeFS ? 'bridge' : 'opfs';
+      const currentMode = currentFSMode();
+      
+      if (targetMode !== currentMode) {
+        setCurrentFSMode(targetMode);
+        isInternalChange = true;
+        api.executeCommand(`e! ${props.fileName}`);
+        setTimeout(() => { isInternalChange = false; }, 100);
       }
     }
   });
