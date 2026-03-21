@@ -45,8 +45,8 @@ importers:
         specifier: ^0.2.5
         version: 0.2.5(solid-js@1.9.11)
       '@net-vim/core':
-        specifier: ^0.5.6
-        version: 0.5.6
+        specifier: ^0.5.8
+        version: 0.5.8
       '@solidjs/signals':
         specifier: ^0.12.0
         version: 0.12.0
@@ -878,8 +878,8 @@ packages:
   '@marijn/find-cluster-break@1.0.2':
     resolution: {integrity: sha512-l0h88YhZFyKdXIFNfSWpyjStDjGHwZ/U7iobcK1cQQD8sejsONdQtTVU+1wVN1PBw40PiiHB1vA5S7VTfQiP9g==}
 
-  '@net-vim/core@0.5.6':
-    resolution: {integrity: sha512-F3jitDA7G2yUrsJHEpvTDy95xPrXHEVT4LtRCKsJPNfdawh61LlAMzwprabiT+Sdsxhpt43PZo74NpqbHoM8LA==}
+  '@net-vim/core@0.5.8':
+    resolution: {integrity: sha512-fpylQr9GsxPxGX0npJz9zIGZGhoLyXAEIOFmW9CDCrim3E7+w7BavSgMwFUsVX4GXgC5+qyAxp8bJhhVhMDsAg==}
 
   '@net-vim/virtual-keyboard@0.2.0':
     resolution: {integrity: sha512-ID0o45+crRNyctQBhemw4zeOq6PH9DdQZBuDGB2BsO+s3qkyTZdLkRml1Aqq9pv2dAu5dZCwmLrg/4PHTpTa3g==}
@@ -3339,7 +3339,7 @@ snapshots:
 
   '@marijn/find-cluster-break@1.0.2': {}
 
-  '@net-vim/core@0.5.6':
+  '@net-vim/core@0.5.8':
     dependencies:
       '@net-vim/virtual-keyboard': 0.2.0
       solid-js: 1.9.11
