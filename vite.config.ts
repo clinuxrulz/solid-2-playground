@@ -32,7 +32,7 @@ export default defineConfig({
       injectRegister: false,
       manifestFilename: 'manifest.json',
       devOptions: {
-        enabled: true,
+        enabled: false,
         type: 'module',
       },
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'logo.svg'],

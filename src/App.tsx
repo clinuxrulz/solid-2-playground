@@ -402,7 +402,8 @@ export default function App() {
   };
 
   onMount(async () => {
-    if (import.meta.env.PROD || (import.meta.env.DEV && (window as any).ENABLE_PWA_DEV)) {
+    const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    if (!isLocal && (import.meta.env.PROD || (import.meta.env.DEV && (window as any).ENABLE_PWA_DEV))) {
       const update = registerSW({
         onNeedRefresh() {
           setNeedRefresh(true);
