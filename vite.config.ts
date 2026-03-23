@@ -65,7 +65,7 @@ export default defineConfig({
         cleanupOutdatedCaches: true,
         mode: 'development',
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
-        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
+        maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
         additionalManifestEntries: ESM_SH_DEPENDENCIES.map((url) => ({ url, revision: null })),
         runtimeCaching: [
           {

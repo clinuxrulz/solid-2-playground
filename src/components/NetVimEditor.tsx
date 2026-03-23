@@ -187,8 +187,25 @@ export default function NetVimEditor(props: NetVimEditorProps) {
       if (targetMode !== currentMode) {
         setCurrentFSMode(targetMode);
         isInternalChange = true;
-        api.executeCommand(`e! ${props.fileName}`);
+        api.executeCommand(`e ${props.fileName}`);
         setTimeout(() => { isInternalChange = false; }, 100);
+      }
+    }
+  });
+
+  createEffect(() => {
+    const api = vimApi();
+    const code = props.code;
+    
+    if (api && props.fileName) {
+      const currentPath = api.getCurrentFilePath();
+      if (currentPath === props.fileName) {
+        const currentContent = api.getBuffer().join('\n');
+        if (currentContent !== code && !isInternalChange) {
+          isInternalChange = true;
+          api.executeCommand(`e ${props.fileName}`);
+          setTimeout(() => { isInternalChange = false; }, 100);
+        }
       }
     }
   });

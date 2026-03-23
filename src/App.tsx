@@ -38,7 +38,7 @@ export default function App() {
   const [activeFile, setActiveFile] = createSignal('main.tsx');
   const [code, setCode] = createSignal('');
   const [compiledCode, setCompiledCode] = createSignal('');
-  const [compiledFiles, setCompiledFiles] = createSignal<Record<string, string>>({});
+  const [compiledFiles, setCompiledFiles] = createSignal<Record<string, { code: string, imports: string[] }>>({});
   const [isCompiling, setIsCompiling] = createSignal(false);
   const [activeView, setActiveView] = createSignal<'code' | 'preview'>('code');
   const [isSidebarOpen, setIsSidebarOpen] = createSignal(true);
@@ -55,6 +55,7 @@ export default function App() {
   const [bridgeKey, setBridgeKey] = createSignal('');
   const [isConnecting, setIsConnecting] = createSignal(false);
   const [lastSavedCode, setLastSavedCode] = createSignal('');
+  const [compilerWorker, setCompilerWorker] = createSignal<Worker | null>(null);
 
   const handleEditorChange = (type: EditorType) => {
     setEditorType(type);
@@ -64,7 +65,6 @@ export default function App() {
   const [lspWorker, setLspWorker] = createSignal<any>(null);
   let importInput: HTMLInputElement | undefined;
 
-  let compilerWorker: Worker | undefined;
   let lspWorkerInstance: Worker | undefined;
 
   const normalizeFilePath = (path: string) => {
@@ -174,22 +174,25 @@ export default function App() {
         }
         
         // Trigger compilation for all TS/TSX files
-        if (compilerWorker) {
+        const compiler = compilerWorker();
+        if (compiler) {
           const tsFiles = nonImportMapFiles.filter(f => f.endsWith('.tsx') || f.endsWith('.ts'));
           if (tsFiles.length > 0) {
-            const knownFiles = new Set(tsFiles.map(f => normalizeFilePath(f)));
             const sourceFiles: Record<string, string> = {};
             
             for (const file of tsFiles) {
               const normalized = normalizeFilePath(file);
               const rawContent = fileContents[file] || '';
               const compilerKey = normalized.replace(/^\/+/, '');
-              sourceFiles[compilerKey] = rewriteFileImports(normalized, rawContent, knownFiles);
+              sourceFiles[compilerKey] = rawContent;
             }
             
-            compilerWorker.postMessage({
-              files: sourceFiles,
-              entry: 'main.tsx'
+            compiler.postMessage({
+              type: 'COMPILE_ALL',
+              data: {
+                files: sourceFiles,
+                entry: 'main.tsx'
+              }
             });
           }
         }
@@ -229,70 +232,6 @@ export default function App() {
     });
   };
 
-  const resolveModuleSpecifier = (importer: string, specifier: string, knownFiles: Set<string>) => {
-    const importerPath = normalizeFilePath(importer);
-    const importerDir = importerPath.replace(/\/[^/]*$/, '');
-
-    const resolveCandidate = (candidate: string) => {
-      candidate = candidate.replace(/\\/g, '/');
-      candidate = normalizePathSegments(candidate);
-
-      const tryVariants = [candidate];
-      if (!/\.[a-zA-Z0-9]+$/.test(candidate)) {
-        tryVariants.push(`${candidate}.tsx`, `${candidate}.ts`, `${candidate}.jsx`, `${candidate}.js`);
-      }
-
-      for (const variant of tryVariants) {
-        if (knownFiles.has(variant)) return variant;
-      }
-
-      return null;
-    };
-
-    if (specifier.startsWith('/')) {
-      return resolveCandidate(specifier);
-    }
-
-    if (specifier.startsWith('.')) {
-      const candidate = importerDir + '/' + specifier;
-      return resolveCandidate(candidate);
-    }
-
-    // Bare local imports like `file2.ts` (no ./) should be treated as same-directory module names
-    const candidateFromImporter = importerDir + '/' + specifier;
-    const found = resolveCandidate(candidateFromImporter);
-    if (found) return found;
-
-    // Also allow root-ish bare names if exactly listed
-    const bareCandidate = '/' + specifier;
-    return resolveCandidate(bareCandidate);
-  };
-
-  const rewriteFileImports = (importer: string, content: string, knownFiles: Set<string>) => {
-    let result = content.replace(/(import\s+(?:[\s\S]*?\s+from\s*)?['"])(.+?)(['"])/g, (match, prefix, spec, suffix) => {
-      if (spec.startsWith('.') || spec.startsWith('/')) {
-        const resolved = resolveModuleSpecifier(importer, spec, knownFiles);
-        if (resolved) {
-          const compilerFriendlyPath = resolved.replace(/^\/+/, '');
-          return `${prefix}${compilerFriendlyPath}${suffix}`;
-        }
-      }
-      return match;
-    });
-
-    result = result.replace(/import\(\s*['"](.+?)['"]\s*\)/g, (match, spec) => {
-      if (spec.startsWith('.') || spec.startsWith('/')) {
-        const resolved = resolveModuleSpecifier(importer, spec, knownFiles);
-        if (resolved) {
-          const compilerFriendlyPath = resolved.replace(/^\/+/, '');
-          return `import('${compilerFriendlyPath}')`;
-        }
-      }
-      return match;
-    });
-
-    return result;
-  };
 
   const exportOPFS = async () => {
     try {
@@ -413,28 +352,30 @@ export default function App() {
     }
 
     // Initialize compiler worker
-    compilerWorker = new Worker(new URL('./workers/compiler.ts', import.meta.url), {
+    const workerInstance = new Worker(new URL('./workers/compiler.ts', import.meta.url), {
       type: 'module',
     });
+    setCompilerWorker(workerInstance);
 
-    compilerWorker.onmessage = (e) => {
+    workerInstance.onmessage = (e) => {
       setIsCompiling(false);
-      if (e.data.compiledFiles) {
-        setCompiledFiles(e.data.compiledFiles);
+      const { type, compiledFiles, code, error, entry } = e.data;
+      if (type === 'COMPILED_ALL' && compiledFiles) {
+        setCompiledFiles(compiledFiles);
         
-        const entryPath = e.data.entry || activeFile();
+        const entryPath = entry || activeFile();
         const noSlashEntry = entryPath.replace(/^\/+/, '');
         const slashedEntry = normalizeFilePath(entryPath);
         
-        if (e.data.compiledFiles[noSlashEntry]) {
-          setCompiledCode(e.data.compiledFiles[noSlashEntry]);
-        } else if (e.data.compiledFiles[slashedEntry]) {
-          setCompiledCode(e.data.compiledFiles[slashedEntry]);
+        if (compiledFiles[noSlashEntry]) {
+          setCompiledCode(compiledFiles[noSlashEntry].code);
+        } else if (compiledFiles[slashedEntry]) {
+          setCompiledCode(compiledFiles[slashedEntry].code);
         }
-      } else if (e.data.code) {
-        setCompiledCode(e.data.code);
-      } else if (e.data.error) {
-        console.error('Compilation Error:', e.data.error);
+      } else if (type === 'COMPILED_SINGLE' && code) {
+        setCompiledCode(code);
+      } else if (type === 'ERROR' && error) {
+        console.error('Compilation Error:', error);
       }
     };
 
@@ -494,7 +435,7 @@ export default function App() {
   });
 
   onCleanup(() => {
-    compilerWorker?.terminate();
+    compilerWorker()?.terminate();
     lspWorkerInstance?.terminate();
   });
 
@@ -520,29 +461,33 @@ export default function App() {
       }
 
       if (fileName && currentFiles.includes(fileName)) {
-        if (compilerWorker && (fileName.endsWith('.tsx') || fileName.endsWith('.ts'))) {
+        const compiler = compilerWorker();
+        if (compiler && (fileName.endsWith('.tsx') || fileName.endsWith('.ts'))) {
           setIsCompiling(true);
 
           const tsFiles = currentFiles.filter((f) => f.endsWith('.tsx') || f.endsWith('.ts'));
-          const knownFiles = new Set(tsFiles.map((f) => normalizeFilePath(f)));
           const sourceFiles: Record<string, string> = {};
 
           for (const file of tsFiles) {
             const normalized = normalizeFilePath(file);
             const rawContent = file === fileName ? currentCode : (await readFile(file)) || '';
             const compilerKey = normalized.replace(/^\/+/, '');
-            sourceFiles[compilerKey] = rewriteFileImports(normalized, rawContent, knownFiles);
+            sourceFiles[compilerKey] = rawContent;
           }
 
-          compilerWorker.postMessage({ 
-            files: sourceFiles, 
-            entry: 'main.tsx'
+          compiler.postMessage({ 
+            type: 'COMPILE_ALL',
+            data: {
+              files: sourceFiles, 
+              entry: 'main.tsx'
+            }
           });
         }
         
         // Sync to LSP worker
-        if (worker && (fileName.endsWith('.tsx') || fileName.endsWith('.ts'))) {
-          await worker.updateFile({ path: normalizeFilePath(fileName), code: currentCode });
+        const lsp = lspWorker()?.instance;
+        if (lsp && (fileName.endsWith('.tsx') || fileName.endsWith('.ts'))) {
+          await lsp.updateFile({ path: normalizeFilePath(fileName), code: currentCode });
         }
 
         if (currentCode && currentCode !== lastSavedCode()) {
@@ -892,7 +837,8 @@ export default function App() {
             code={compiledCode()}
             importMap={importMap()}
             compiledFiles={compiledFiles()}
-            entryFile="/main.tsx"
+            entryFile="main.tsx"
+            compilerWorker={compilerWorker()}
           />
           </div>
         </Resizable.Panel>
