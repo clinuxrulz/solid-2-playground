@@ -31,6 +31,15 @@ const solidjsSignalsLibs = import.meta.glob("../../node_modules/@solidjs/signals
   eager: true,
 });
 
+const playgroundHmrTypes = `
+declare module 'playground:hmr' {
+  import type { Accessor } from 'solid-js';
+  export function hmrSignal<T>(id: string, init: T): Accessor<T>;
+  export function onHMRDispose(fn: () => void): void;
+  export function hot<T = any>(path: string): Accessor<T | null>;
+}
+`;
+
 const fsMap = new Map<string, string>();
 const libFiles: string[] = [];
 
@@ -74,6 +83,9 @@ fsMap.set("/node_modules/@solidjs/signals/package.json", JSON.stringify({
   version: "0.12.0",
   types: "./dist/types/index.d.ts",
 }));
+
+// 5. Add playground:hmr types
+fsMap.set("/node_modules/playground:hmr.d.ts", playgroundHmrTypes);
 
 let ts: any = null;
 async function ensureTs() {
@@ -188,7 +200,8 @@ Comlink.expose(
         "@solidjs/web": ["/node_modules/@solidjs/web/types/index.d.ts"],
         "@solidjs/web/*": ["/node_modules/@solidjs/web/types/*", "/node_modules/@solidjs/web/*"],
         "@solidjs/signals": ["/node_modules/@solidjs/signals/dist/types/index.d.ts"],
-        "@solidjs/signals/*": ["/node_modules/@solidjs/signals/dist/types/*", "/node_modules/@solidjs/signals/*"]
+        "@solidjs/signals/*": ["/node_modules/@solidjs/signals/dist/types/*", "/node_modules/@solidjs/signals/*"],
+        "playground:hmr": ["/node_modules/playground:hmr.d.ts"]
       },
       // Force TS to stay within our virtual node_modules
       typeRoots: ["/node_modules"],
