@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { insertCompletionText, pickedCompletion, } from "@codemirror/autocomplete";
 import { defaultAutocompleteRenderer } from "./renderAutocomplete";
+
 export function deserializeCompletions(raw, opts) {
     if (!raw)
         return raw;
@@ -9,15 +10,63 @@ export function deserializeCompletions(raw, opts) {
         options: raw.options.map((o) => deserializeCompletion(o, opts)),
     };
 }
+
 function deserializeCompletion(raw, opts) {
-    const { codeActions, label, type } = raw;
+    const { label, type, hasAction, source, data } = raw;
+    
+    // We cache the details once fetched
+    let detailsPromise = null;
+    const getDetails = () => {
+        if (!detailsPromise && opts.worker) {
+            detailsPromise = opts.worker.getCompletionDetails({
+                path: opts.path,
+                pos: opts.pos,
+                name: label,
+                source,
+                data
+            });
+        }
+        return detailsPromise;
+    };
+
     return {
         label,
         type,
-        apply: codeActions ? codeActionToApplyFunction(codeActions) : raw.label,
-        info: (opts?.renderAutocomplete ?? defaultAutocompleteRenderer)(raw),
+        apply: (view, completion, from, to) => {
+            if (hasAction || source) {
+                // For auto-imports, we must fetch details to get code actions
+                getDetails().then(details => {
+                    if (details?.codeActions) {
+                        codeActionToApplyFunction(details.codeActions)(view, completion, from, to);
+                    } else {
+                        view.dispatch({
+                            ...insertCompletionText(view.state, completion.label, from, to),
+                            annotations: pickedCompletion.of(completion),
+                        });
+                    }
+                }).catch(() => {
+                    view.dispatch({
+                        ...insertCompletionText(view.state, completion.label, from, to),
+                        annotations: pickedCompletion.of(completion),
+                    });
+                });
+            } else {
+                view.dispatch({
+                    ...insertCompletionText(view.state, completion.label, from, to),
+                    annotations: pickedCompletion.of(completion),
+                });
+            }
+        },
+        info: (completion) => {
+            return getDetails().then(details => {
+                const renderer = (opts?.renderAutocomplete ?? defaultAutocompleteRenderer)(details || raw);
+                const rendered = typeof renderer === 'function' ? renderer() : renderer;
+                return rendered?.dom || rendered;
+            });
+        },
     };
 }
+
 /**
  * The default for CodeMirror completions is that when you hit Tab or the other trigger,
  * it will replace the current 'word' (partially-written text) with the label of the completion.
@@ -32,21 +81,10 @@ export function codeActionToApplyFunction(codeActions) {
             annotations: pickedCompletion.of(completion),
         };
         const actionTransactions = [];
-        // Complete, but also implement code actions.
-        // https://github.com/codemirror/autocomplete/blob/30307656e85c9e5911a69fe2432de05be1580958/src/state.ts#L322
+        
         for (const action of codeActions) {
             for (const change of action.changes) {
                 for (const textChange of change.textChanges) {
-                    // Note that this may be dangerous! We've had many problems
-                    // with trying to dispatch transactions on CodeMirror when the length
-                    // of the document is different than what it expects or needs. I think
-                    // that this will be safe in that case because we're combining
-                    // and only declaring the length once.
-                    //
-                    // NOTE: this has less than ideal history behavior! ideal this would
-                    // be composed with `insTransaction` and produce one history event.
-                    // But that is tough because the two need to perfectly agree on the document that
-                    // they're editing, and the length of the document changes.
                     actionTransactions.push({
                         changes: [
                             {
@@ -63,4 +101,3 @@ export function codeActionToApplyFunction(codeActions) {
         view.dispatch(...[insTransaction, ...actionTransactions]);
     };
 }
-//# sourceMappingURL=deserializeCompletions.map

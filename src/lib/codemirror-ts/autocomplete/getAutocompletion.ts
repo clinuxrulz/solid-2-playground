@@ -44,7 +44,7 @@ export async function getAutocompletion({
       includeCompletionsForModuleExports: true,
       includeCompletionsForImportStatements: true,
     },
-    {},
+    undefined,
   );
 
   // TODO: build ATA support for a 'loading' state
@@ -62,28 +62,54 @@ export async function getAutocompletion({
         type = undefined;
       }
 
-      const details = env.languageService.getCompletionEntryDetails(
-        path,
-        pos,
-        entry.name,
-        {},
-        entry.source,
-        {},
-        entry.data,
-      );
-
       return {
         label: entry.name,
-        codeActions: details?.codeActions,
-        displayParts: details?.displayParts ?? [],
-        documentation: details?.documentation,
-        tags: details?.tags,
         type,
+        // Carry over these properties so we can fetch details later
+        source: entry.source,
+        data: entry.data,
+        hasAction: entry.hasAction,
       };
     });
 
   return {
     from: word ? (word.text === "." ? word.to : word.from) : pos,
     options,
+  };
+}
+
+export async function getCompletionDetails({
+  env,
+  path,
+  pos,
+  name,
+  source,
+  data,
+}: {
+  env: VirtualTypeScriptEnvironment;
+  path: string;
+  pos: number;
+  name: string;
+  source?: string;
+  data?: ts.CompletionEntryData;
+}): Promise<RawCompletionItem | null> {
+  const details = env.languageService.getCompletionEntryDetails(
+    path,
+    pos,
+    name,
+    undefined,
+    source,
+    undefined,
+    data,
+  );
+
+  if (!details) return null;
+
+  return {
+    label: name,
+    codeActions: details.codeActions,
+    displayParts: details.displayParts ?? [],
+    documentation: details.documentation,
+    tags: details.tags,
   };
 }

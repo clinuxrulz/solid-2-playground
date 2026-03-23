@@ -162,6 +162,7 @@ function createWorkerWrapper(fn: () => Promise<VirtualTypeScriptEnvironment>): a
     // Standard LSP methods...
     async getLints(params: any) { return result?.getLints(params) || []; },
     async getAutocompletion(params: any) { return result?.getAutocompletion(params) || null; },
+    async getCompletionDetails(params: any) { return result?.getCompletionDetails(params) || null; },
     async getHover(params: any) { return result?.getHover(params) || null; },
     async deleteFile(path: string) { return env?.deleteFile(path); },
     async ping() { return "pong"; },

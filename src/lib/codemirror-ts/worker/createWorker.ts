@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { getAutocompletion } from "../autocomplete/getAutocompletion";
+import { getAutocompletion, getCompletionDetails } from "../autocomplete/getAutocompletion";
 import { getHover } from "../hover/getHover";
 import { getLints } from "../lint/getLints";
 import { createOrUpdateFile } from "../sync/update";
@@ -38,6 +38,11 @@ export function createWorker(_options) {
             if (!env)
                 return null;
             return getAutocompletion({ env, path, context });
+        },
+        getCompletionDetails({ path, pos, name, source, data }) {
+            if (!env)
+                return null;
+            return getCompletionDetails({ env, path, pos, name, source, data });
         },
         getHover({ path, pos }) {
             if (!env)
