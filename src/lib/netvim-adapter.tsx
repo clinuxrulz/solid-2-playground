@@ -17,6 +17,9 @@ export default {
       return;
     }
     const worker = lspWorker.instance;
+    if (typeof worker.ready === 'function') {
+      await worker.ready();
+    }
 
     let lints: any[] = [];
     let debounceTimer: any = null;
@@ -333,8 +336,8 @@ export default {
       if (data.path.endsWith('.ts') || data.path.endsWith('.tsx')) {
         const absolutePath = data.path.startsWith('/') ? data.path : '/' + data.path;
         await worker.updateFile({ path: absolutePath, code: data.content });
-        await updateLints(data.path);
-        await updateClassifications(data.path, data.content);
+        await updateLints(absolutePath);
+        await updateClassifications(absolutePath, data.content);
       }
     });
 
@@ -355,8 +358,8 @@ export default {
         if (path && (path.endsWith('.ts') || path.endsWith('.tsx'))) {
           const absolutePath = path.startsWith('/') ? path : '/' + path;
           await worker.updateFile({ path: absolutePath, code: bufferLines.join('\n') });
-          await updateLints(path);
-          await updateClassifications(path, bufferLines.join('\n'));
+          await updateLints(absolutePath);
+          await updateClassifications(absolutePath, bufferLines.join('\n'));
           if (api.getMode() === 'Insert') {
             const cursor = api.getCursor();
             const line = bufferLines[cursor.y];
@@ -367,14 +370,13 @@ export default {
       }, 300);
     });
 
-    // Initial Sync
     const initialPath = api.getCurrentFilePath();
     const initialContent = api.getBuffer().join('\n');
     if (initialPath) {
       const absolutePath = initialPath.startsWith('/') ? initialPath : '/' + initialPath;
       await worker.updateFile({ path: absolutePath, code: initialContent });
-      await updateLints(initialPath);
-      await updateClassifications(initialPath, initialContent);
+      await updateLints(absolutePath);
+      await updateClassifications(absolutePath, initialContent);
     }
   }
 };

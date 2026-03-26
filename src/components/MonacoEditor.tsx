@@ -11,6 +11,8 @@ interface MonacoEditorProps {
   fileName: string;
   lspWorker?: any;
   allFiles: string[];
+  lspReady?: boolean;
+  lspTypesVersion?: () => number;
 }
 
 declare global {
@@ -54,29 +56,28 @@ function debounce<T extends (...args: any[]) => void>(func: T, delay: number): (
 export default function MonacoEditor(props: MonacoEditorProps) {
   let editorParent: HTMLDivElement | undefined;
   const [editor, setEditor] = createSignal<any>(null);
+  const [lspInitialized, setLspInitialized] = createSignal(false);
 
-  onMount(async () => {
+  const syncModelToLsp = async (model: any, lsp: any) => {
+    if (!model || !lsp) return;
+
+    const modelPath = model.uri.path;
+    const normalizedPath = ensureSlash(modelPath);
+
+    if (!(normalizedPath.endsWith('.ts') || normalizedPath.endsWith('.tsx'))) {
+      return;
+    }
+
+    await lsp.instance.updateFile({
+      path: normalizedPath,
+      code: model.getValue(),
+    });
+  };
+
+  const initializeEditor = async () => {
     const monaco = await loadMonaco();
     
     if (!editorParent) return;
-
-    // Setup LSP Bridge, which will provide all TS intelligence
-    if (props.lspWorker && !lspAdapter) {
-      lspAdapter = setupMonacoLSP(monaco, props.lspWorker, props.fileName);
-    }
-
-    // Create models for all files to ensure they exist in Monaco's VFS
-    if (props.lspWorker) {
-      const fsMap = await props.lspWorker.instance.getFsMap();
-      for (const [path, content] of fsMap) {
-        const normalizedPath = ensureSlash(path);
-        const modelUri = monaco.Uri.file(normalizedPath);
-        // Create a model if it doesn't exist. This is for cross-file imports & hover.
-        if (!monaco.editor.getModel(modelUri)) {
-          monaco.editor.createModel(content, getLanguage(path), modelUri);
-        }
-      }
-    }
 
     const lang = getLanguage(props.fileName);
     const modelUri = monaco.Uri.file(ensureSlash(props.fileName));
@@ -104,13 +105,72 @@ export default function MonacoEditor(props: MonacoEditorProps) {
     });
 
     setEditor(newEditor);
+  };
+
+  const initializeLSP = async () => {
+    if (!props.lspReady || !props.lspWorker || lspInitialized()) return;
+    
+    const monaco = await loadMonaco();
+    const lsp = props.lspWorker;
+    
+    if (!lspAdapter) {
+      lspAdapter = setupMonacoLSP(monaco, lsp, props.fileName);
+    }
+
+    const fsMap = await lsp.instance.getFsMap();
+    for (const [path, content] of fsMap) {
+      const normalizedPath = ensureSlash(path);
+      const modelUri = monaco.Uri.file(normalizedPath);
+      if (!monaco.editor.getModel(modelUri)) {
+        monaco.editor.createModel(content, getLanguage(path), modelUri);
+      }
+    }
+
+    const currentEditor = editor();
+    if (currentEditor) {
+      const model = currentEditor.getModel();
+      if (model) {
+        await syncModelToLsp(model, lsp);
+        await updateDiagnostics(monaco, lsp, model);
+      }
+    }
+
+    setLspInitialized(true);
+  };
+
+  onMount(async () => {
+    await initializeEditor();
+  });
+
+  createEffect(() => {
+    if (props.lspReady) {
+      initializeLSP();
+    }
+  });
+
+  createEffect(() => {
+    const lspTypesVersion = props.lspTypesVersion?.();
+    if (lspTypesVersion && lspInitialized()) {
+      const lsp = props.lspWorker;
+      const currentEditor = editor();
+      if (lsp && currentEditor) {
+        const model = currentEditor.getModel();
+        if (model) {
+          loadMonaco().then(monaco => {
+            syncModelToLsp(model, lsp).then(() => {
+              updateDiagnostics(monaco, lsp, model);
+            });
+          });
+        }
+      }
+    }
   });
 
   createEffect(() => {
     const currentEditor = editor();
     const currentFileName = props.fileName;
     const currentCode = props.code;
-    const lsp = props.lspWorker;
+    const lspReady = props.lspReady;
     
     const debouncedUpdateDiagnostics = createMemo(() => debounce(updateDiagnostics, 300));
     
@@ -131,9 +191,10 @@ export default function MonacoEditor(props: MonacoEditorProps) {
           currentEditor.setModel(model);
         }
 
-        // Trigger diagnostics update
-        if (lsp) {
-          debouncedUpdateDiagnostics()(monaco, lsp, model);
+        if (lspReady && props.lspWorker) {
+          void syncModelToLsp(model, props.lspWorker).then(() => {
+            debouncedUpdateDiagnostics()(monaco, props.lspWorker, model);
+          });
         }
       });
     }
@@ -143,14 +204,16 @@ export default function MonacoEditor(props: MonacoEditorProps) {
     const lsp = props.lspWorker;
     const files = props.allFiles;
     const currentFileName = props.fileName;
+    const lspReady = props.lspReady;
     
-    if (lsp && files.length > 0) {
+    if (lspReady && lsp && files.length > 0) {
       loadMonaco().then(async (monaco) => {
         const fsMap = await lsp.instance.getFsMap();
         for (const [path, content] of fsMap) {
           if (!path.startsWith('/node_modules/') && !path.startsWith('/lib/')) {
-            if (path !== currentFileName) {
-              const modelUri = monaco.Uri.file(ensureSlash(path));
+            const normalizedPath = path.startsWith('/') ? path : '/' + path;
+            if (normalizedPath !== '/' + currentFileName) {
+              const modelUri = monaco.Uri.file(normalizedPath);
               let model = monaco.editor.getModel(modelUri);
               if (!model) {
                 monaco.editor.createModel(content, getLanguage(path), modelUri);

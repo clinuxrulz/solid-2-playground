@@ -22,7 +22,8 @@ export function createWorker(_options) {
                 initialized = true;
             }
         },
-        updateFile({ path, code }) {
+        async updateFile({ path, code }) {
+            await this.initialize();
             if (!env)
                 return;
             if (createOrUpdateFile(env, path, code)) {

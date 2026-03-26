@@ -14,6 +14,8 @@ interface EditorProps {
   editorType: EditorType;
   onEditorTypeChange: (type: EditorType) => void;
   bridgeFS?: any;
+  lspReady: boolean;
+  lspTypesVersion: () => number;
 }
 
 export default function Editor(props: EditorProps) {
@@ -54,6 +56,8 @@ export default function Editor(props: EditorProps) {
                 fileName={props.fileName} 
                 lspWorker={props.lspWorker}
                 allFiles={props.allFiles}
+                lspReady={props.lspReady}
+                lspTypesVersion={props.lspTypesVersion}
               />
             </Suspense>
           </Match>
@@ -62,7 +66,9 @@ export default function Editor(props: EditorProps) {
               code={props.code} 
               onCodeChange={props.onCodeChange} 
               fileName={props.fileName} 
-              lspWorker={props.lspWorker} 
+              lspWorker={props.lspWorker}
+              lspReady={props.lspReady}
+              lspTypesVersion={props.lspTypesVersion}
             />
           </Match>
           <Match when={props.editorType === 'net-vim'}>
@@ -75,6 +81,8 @@ export default function Editor(props: EditorProps) {
                     fileName={props.fileName} 
                     lspWorker={props.lspWorker}
                     bridgeFS={props.bridgeFS}
+                    lspReady={props.lspReady}
+                    lspTypesVersion={props.lspTypesVersion}
                   />
                 </Match>
                 <Match when={netVimMountKey() % 2 !== 0}>
@@ -84,6 +92,8 @@ export default function Editor(props: EditorProps) {
                     fileName={props.fileName} 
                     lspWorker={props.lspWorker}
                     bridgeFS={props.bridgeFS}
+                    lspReady={props.lspReady}
+                    lspTypesVersion={props.lspTypesVersion}
                   />
                 </Match>
               </Switch>

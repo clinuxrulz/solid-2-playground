@@ -6,13 +6,14 @@ import { readFile as opfsReadFile, writeFile as opfsWriteFile, listFiles as opfs
 import { createBridgeFS, BridgeFS, BridgeConfig } from './lib/bridge-fs';
 import JSZip from 'jszip';
 import * as Comlink from 'comlink';
-import { getInitialEditorType, EditorType } from './lib/device';
+import { getInitialEditorType, saveEditorType, EditorType } from './lib/device';
 import { registerSW } from 'virtual:pwa-register';
+import { fetchAllSolidVersions, formatVersion, getVersionCategory, getImportMapEntries, isVersion2OrHigher, shouldShowVersion } from './lib/versions';
 
 const DEFAULT_IMPORT_MAP = {
   "imports": {
-    "solid-js": "https://esm.sh/solid-js@2.0.0-beta.2?dev",
-    "@solidjs/web": "https://esm.sh/@solidjs/web@2.0.0-beta.2?dev&external=solid-js"
+    "solid-js": "https://esm.sh/solid-js@2.0.0-beta.4?dev",
+    "@solidjs/web": "https://esm.sh/@solidjs/web@2.0.0-beta.4?dev&external=solid-js"
   }
 };
 
@@ -35,10 +36,10 @@ render(() => <App />, document.getElementById('root')!);
 
 export default function App() {
   const [files, setFiles] = createSignal<string[]>([]);
-  const [activeFile, setActiveFile] = createSignal('main.tsx');
+  const [activeFile, setActiveFile] = createSignal('');
   const [code, setCode] = createSignal('');
   const [compiledCode, setCompiledCode] = createSignal('');
-  const [compiledFiles, setCompiledFiles] = createSignal<Record<string, { code: string, imports: string[] }>>({});
+  const [compiledFiles, setCompiledFiles] = createSignal<Record<string, { code: string, imports: string[], hotImports: string[] }>>({});
   const [isCompiling, setIsCompiling] = createSignal(false);
   const [activeView, setActiveView] = createSignal<'code' | 'preview'>('code');
   const [isSidebarOpen, setIsSidebarOpen] = createSignal(true);
@@ -55,14 +56,17 @@ export default function App() {
   const [bridgeKey, setBridgeKey] = createSignal('');
   const [isConnecting, setIsConnecting] = createSignal(false);
   const [lastSavedCode, setLastSavedCode] = createSignal('');
+  const [lastExportName, setLastExportName] = createSignal('playground-export.zip');
   const [compilerWorker, setCompilerWorker] = createSignal<Worker | null>(null);
-
-  const handleEditorChange = (type: EditorType) => {
-    setEditorType(type);
-    localStorage.setItem('preferred-editor', type);
-  };
-  const [lastExportName, setLastExportName] = createSignal('solid-playground-opfs.zip');
   const [lspWorker, setLspWorker] = createSignal<any>(null);
+  const [availableVersions, setAvailableVersions] = createSignal<string[]>([]);
+  const [isLoadingVersions, setIsLoadingVersions] = createSignal(false);
+  const [showVersionDropdown, setShowVersionDropdown] = createSignal(false);
+  
+  const [compilerReady, setCompilerReady] = createSignal(false);
+  const [lspReady, setLspReady] = createSignal(false);
+  const [filesLoaded, setFilesLoaded] = createSignal(false);
+  const [lspTypesVersion, setLspTypesVersion] = createSignal(0);
   let importInput: HTMLInputElement | undefined;
 
   let lspWorkerInstance: Worker | undefined;
@@ -191,7 +195,8 @@ export default function App() {
               type: 'COMPILE_ALL',
               data: {
                 files: sourceFiles,
-                entry: 'main.tsx'
+                entry: 'main.tsx',
+                importMap: importMap()
               }
             });
           }
@@ -316,6 +321,16 @@ export default function App() {
         const importMapContent = await readFile('import-map.json');
         if (importMapContent !== null) {
           setImportMap(importMapContent);
+          // Also update LSP with new import map
+          const worker = lspWorker()?.instance;
+          if (worker) {
+            try {
+              const parsed = JSON.parse(importMapContent);
+              if (parsed.imports) {
+                await worker.updateImportMap(parsed.imports);
+              }
+            } catch {}
+          }
         }
       }
 
@@ -351,11 +366,24 @@ export default function App() {
       setUpdateSW(() => update);
     }
 
-    // Initialize compiler worker
+    // 1. Initialize compiler worker (no dependencies)
     const workerInstance = new Worker(new URL('./workers/compiler.ts', import.meta.url), {
       type: 'module',
     });
     setCompilerWorker(workerInstance);
+    setCompilerReady(true);
+
+    // Fetch available Solid.js versions (parallel, doesn't block loading)
+    setIsLoadingVersions(true);
+    fetchAllSolidVersions()
+      .then(versions => {
+        setAvailableVersions(versions);
+        setIsLoadingVersions(false);
+      })
+      .catch(() => {
+        setAvailableVersions(['2.0.0-beta.4', '2.0.0-beta.2', '2.0.0-beta.1', '2.0.0', '1.9.4', '1.9.3', '1.9.2']);
+        setIsLoadingVersions(false);
+      });
 
     workerInstance.onmessage = (e) => {
       setIsCompiling(false);
@@ -376,33 +404,46 @@ export default function App() {
         setCompiledCode(code);
       } else if (type === 'ERROR' && error) {
         console.error('Compilation Error:', error);
+      } else if (type === 'PRESET_LOADED') {
+        console.log('babel-preset-solid loaded for version:', e.data.version);
       }
     };
 
-    // Initialize LSP worker
-    console.log("Starting LSP worker...");
+    // 2. Initialize LSP worker (depends on: compiler ready)
     lspWorkerInstance = new Worker(new URL('./workers/lsp.worker.ts', import.meta.url), {
       type: 'module',
     });
     const worker = Comlink.wrap<any>(lspWorkerInstance);
-    console.log("LSP worker wrapped, initializing...");
-    await worker.initialize();
-    console.log("LSP worker initialized, setting signal.");
+    
+    // Load saved import map or use default
+    const savedImportMap = await readFile('import-map.json');
+    let initialImportMap = DEFAULT_IMPORT_MAP.imports;
+    if (savedImportMap) {
+      try {
+        const parsed = JSON.parse(savedImportMap);
+        if (parsed.imports) {
+          initialImportMap = parsed.imports;
+        }
+      } catch {}
+    }
+    
+    // LSP init must complete before we can sync files
+    await worker.initialize(initialImportMap);
     setLspWorker({ instance: worker });
+    setLspReady(true);
 
-    // Load initial files or create them if empty
+    // 3. Load files and sync to LSP (depends on: LSP ready)
     const existingFiles = await listFiles();
     if (existingFiles.length === 0) {
       for (const [name, content] of Object.entries(DEFAULT_FILES)) {
         await writeFile(name, content);
-        await worker.updateFile({ path: name, code: content });
+        await worker.updateFile({ path: normalizeFilePath(name), code: content });
       }
       await writeFile('import-map.json', JSON.stringify(DEFAULT_IMPORT_MAP, null, 2));
       setFiles(Object.keys(DEFAULT_FILES));
       setActiveFile('main.tsx');
     } else {
       setFiles(existingFiles.filter(f => f !== 'import-map.json'));
-      // Sync all existing files to LSP worker
       for (const file of existingFiles) {
         if (file !== 'import-map.json') {
           const content = await readFile(file);
@@ -416,15 +457,15 @@ export default function App() {
         const firstFile = existingFiles.find(f => f !== 'import-map.json');
         setActiveFile(firstFile || 'main.tsx');
       }
-      const savedImportMap = await readFile('import-map.json');
-      if (savedImportMap) {
-        setImportMap(savedImportMap);
+      const savedImportMapContent = await readFile('import-map.json');
+      if (savedImportMapContent) {
+        setImportMap(savedImportMapContent);
       } else {
         await writeFile('import-map.json', JSON.stringify(DEFAULT_IMPORT_MAP, null, 2));
       }
     }
 
-    // Load active file
+    // 4. Load active file content (depends on: files loaded)
     if (activeFile()) {
       const savedCode = await readFile(activeFile());
       if (savedCode !== null) {
@@ -432,6 +473,7 @@ export default function App() {
         setLastSavedCode(savedCode);
       }
     }
+    setFilesLoaded(true);
   });
 
   onCleanup(() => {
@@ -441,6 +483,33 @@ export default function App() {
 
   // Debounced compilation and LSP sync
   let debounceTimeout: any;
+  
+  // Update LSP when import map changes programmatically
+  createEffect(() => {
+    const map = importMap();
+    const lsp = lspWorker()?.instance;
+    const currentFiles = files();
+    if (lsp && map) {
+      try {
+        const parsed = JSON.parse(map);
+        if (parsed.imports) {
+          lsp.updateImportMap(parsed.imports).then(() => {
+            setLspTypesVersion(v => v + 1);
+          });
+          // Re-sync all source files after import map update
+          currentFiles.forEach(async (file) => {
+            if (file.endsWith('.ts') || file.endsWith('.tsx')) {
+              const content = await readFile(file);
+              if (content !== null) {
+                await lsp.updateFile({ path: normalizeFilePath(file), code: content });
+              }
+            }
+          });
+        }
+      } catch {}
+    }
+  });
+  
   createEffect(() => {
     const currentCode = code();
     const fileName = activeFile();
@@ -451,9 +520,25 @@ export default function App() {
     debounceTimeout = setTimeout(async () => {
       if (fileName === 'import-map.json') {
         try {
-          JSON.parse(currentCode);
+          const parsed = JSON.parse(currentCode);
           setImportMap(currentCode);
           writeFile(fileName, currentCode);
+          
+          // Update LSP worker with new import map
+          const lsp = lspWorker()?.instance;
+          if (lsp && parsed.imports) {
+            await lsp.updateImportMap(parsed.imports);
+            setLspTypesVersion(v => v + 1);
+          }
+          
+          // Update compiler with new import map
+          const compiler = compilerWorker();
+          if (compiler && parsed.imports) {
+            compiler.postMessage({
+              type: 'SET_IMPORT_MAP',
+              data: { importMap: currentCode }
+            });
+          }
         } catch (e) {
           writeFile(fileName, currentCode);
         }
@@ -479,7 +564,8 @@ export default function App() {
             type: 'COMPILE_ALL',
             data: {
               files: sourceFiles, 
-              entry: 'main.tsx'
+              entry: 'main.tsx',
+              importMap: importMap()
             }
           });
         }
@@ -508,7 +594,7 @@ export default function App() {
       }
       const worker = lspWorker()?.instance;
       if (worker && (activeFile().endsWith('.tsx') || activeFile().endsWith('.ts'))) {
-        await worker.updateFile({ path: activeFile(), code: currentCode || '' });
+        await worker.updateFile({ path: normalizeFilePath(activeFile()), code: currentCode || '' });
       }
     }
     
@@ -576,6 +662,43 @@ export default function App() {
     }
   };
 
+  const updateImportMapContent = async (content: string) => {
+    setImportMap(content);
+    await writeFile('import-map.json', content);
+
+    if (activeFile() === 'import-map.json') {
+      setCode(content);
+      setLastSavedCode(content);
+    }
+  };
+
+  const updateSourceImportsForVersion = async (version: string) => {
+    const useV2Imports = isVersion2OrHigher(version);
+    const sourceFiles = files().filter((file) => /\.(t|j)sx?$/.test(file));
+    const lsp = lspWorker()?.instance;
+
+    for (const file of sourceFiles) {
+      const original = file === activeFile() ? code() : await readFile(file);
+      if (original === null) continue;
+
+      const updated = useV2Imports
+        ? original.replace(/(['"])solid-js\/web\1/g, '$1@solidjs/web$1')
+        : original.replace(/(['"])@solidjs\/web\1/g, '$1solid-js/web$1');
+
+      if (updated === original) continue;
+
+      await writeFile(file, updated);
+      if (file === activeFile()) {
+        setCode(updated);
+        setLastSavedCode(updated);
+      }
+
+      if (lsp && (file.endsWith('.ts') || file.endsWith('.tsx'))) {
+        await lsp.updateFile({ path: normalizeFilePath(file), code: updated });
+      }
+    }
+  };
+
   return (
     <div class="flex flex-col h-full bg-[#1e1e1e] text-[#cccccc] font-sans overflow-hidden">
       {/* Top Bar */}
@@ -638,7 +761,7 @@ export default function App() {
           {/* Mobile Editor Selector */}
           <select 
             value={editorType()} 
-            onInput={(e) => handleEditorChange((e.target as HTMLSelectElement).value as EditorType)}
+            onInput={(e) => { const t = (e.target as HTMLSelectElement).value as EditorType; setEditorType(t); saveEditorType(t); }}
             class="md:hidden bg-[#333333] text-white text-[11px] px-2 py-1 rounded border border-[#444444] focus:outline-none focus:border-[#007acc]"
           >
             <option value="monaco">Monaco</option>
@@ -662,13 +785,108 @@ export default function App() {
             </button>
           </div>
 
+          {/* Version Selector - visible on all screen sizes */}
+          <div class="relative">
+            <button
+              onClick={() => setShowVersionDropdown(!showVersionDropdown())}
+              class="flex items-center space-x-1 px-2 py-0.5 rounded bg-[#333333] hover:bg-[#444444] text-[11px] text-gray-300 transition-colors"
+            >
+              <span>Solid {(() => {
+                try {
+                  const map = JSON.parse(importMap());
+                  const url = map.imports?.['solid-js'] || '';
+                  const match = url.match(/solid-js@([\d.]+(?:-[a-z]+\.\d+)?)/);
+                  return match ? match[1] : '2.0.0';
+                } catch { return '2.0.0'; }
+              })()}</span>
+              <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            <Show when={showVersionDropdown()}>
+              <div class="absolute right-0 top-full mt-1 w-64 max-h-80 overflow-y-auto bg-[#252526] border border-[#444444] rounded shadow-xl z-[150]">
+                <div class="p-2 border-b border-[#333333]">
+                  <input
+                    type="text"
+                    placeholder="Search versions..."
+                    class="w-full bg-[#1e1e1e] border border-[#444444] rounded px-2 py-1 text-[11px] text-white focus:outline-none focus:border-[#007acc]"
+                    onInput={(e) => {
+                      const search = (e.target as HTMLInputElement).value.toLowerCase();
+                      // Filter would be applied to availableVersions
+                    }}
+                  />
+                </div>
+                <Show when={isLoadingVersions()}>
+                  <div class="p-4 text-[11px] text-gray-400 text-center">Loading versions...</div>
+                </Show>
+                <div class="py-1">
+                  <For each={availableVersions().filter(v => shouldShowVersion(v, false))}>
+                    {(version) => {
+                      const isSelected = (() => {
+                        try {
+                          const map = JSON.parse(importMap());
+                          return map.imports?.['solid-js']?.includes(version);
+                        } catch { return false; }
+                      })();
+                      const category = getVersionCategory(version);
+                      const categoryColors: Record<string, string> = {
+                        'stable': 'text-green-400',
+                        'beta': 'text-blue-400',
+                        'alpha': 'text-yellow-400',
+                        'rc': 'text-purple-400',
+                        'experimental': 'text-orange-400',
+                        'legacy': 'text-gray-500',
+                      };
+                      const categoryLabels: Record<string, string> = {
+                        'stable': 'STABLE',
+                        'beta': 'BETA',
+                        'alpha': 'ALPHA',
+                        'rc': 'RC',
+                        'experimental': 'EXP',
+                        'legacy': '1.x',
+                      };
+                      return (
+                        <button
+                          onClick={async () => {
+                            let parsedMap: any = {};
+                            try {
+                              parsedMap = JSON.parse(importMap());
+                            } catch {}
+
+                            const managedImports = getImportMapEntries(version);
+                            const newMap = {
+                              ...parsedMap,
+                              imports: {
+                                ...(parsedMap.imports || {}),
+                                ...managedImports,
+                              }
+                            };
+                            delete newMap.imports['solid-js/web'];
+                            delete newMap.imports['solid-js/store'];
+                            delete newMap.imports['@solidjs/web'];
+                            Object.assign(newMap.imports, managedImports);
+
+                            await updateSourceImportsForVersion(version);
+                            await updateImportMapContent(JSON.stringify(newMap, null, 2));
+                            setShowVersionDropdown(false);
+                          }}
+                          class={`w-full px-3 py-1.5 text-left text-[12px] hover:bg-[#2a2d2e] flex items-center justify-between ${isSelected ? 'bg-[#007acc]/30' : ''}`}
+                        >
+                          <span class="text-white">{version}</span>
+                          <span class={`text-[10px] ${categoryColors[category]}`}>{categoryLabels[category]}</span>
+                        </button>
+                      );
+                    }}
+                  </For>
+                </div>
+              </div>
+            </Show>
+          </div>
+
           <div class="hidden sm:flex items-center space-x-2">
             <Show when={isCompiling()}>
               <span class="text-[11px] text-yellow-500">Compiling...</span>
             </Show>
-            <div class="px-2 py-0.5 rounded bg-[#333333] text-[11px] text-gray-400">
-              Solid 2.0
-            </div>
           </div>
         </div>
       </header>
@@ -805,8 +1023,10 @@ export default function App() {
                 lspWorker={lspWorker()}
                 allFiles={files()}
                 editorType={editorType()}
-                onEditorTypeChange={handleEditorChange}
+                onEditorTypeChange={(t) => { setEditorType(t); saveEditorType(t); }}
                 bridgeFS={bridgeFS()}
+                lspReady={lspReady()}
+                lspTypesVersion={() => lspTypesVersion()}
               />
             </Show>
             {/* Mobile Compiling Indicator */}

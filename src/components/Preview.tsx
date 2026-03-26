@@ -27,7 +27,7 @@ const HMR_RUNTIME = `
 
   window.addEventListener('message', async (e) => {
     if (e.data.type === 'HMR_UPDATE') {
-      const { entryUrl, urlMap } = e.data;
+      const { entryUrl, urlMap, needsShim } = e.data;
       
       // Update registry and notify hot accessors
       for (const [path, url] of Object.entries(urlMap)) {
@@ -119,17 +119,31 @@ export default function Preview(props: PreviewProps) {
 
     const defaultMap = {
       imports: {
-        "solid-js": "https://esm.sh/solid-js@2.0.0-beta.2?dev",
-        "@solidjs/web": "https://esm.sh/@solidjs/web@2.0.0-beta.2?dev&external=solid-js",
+        "solid-js": "https://esm.sh/solid-js@2.0.0-beta.4?dev",
+        "@solidjs/web": "https://esm.sh/@solidjs/web@2.0.0-beta.4?dev&external=solid-js",
         "playground:hmr": hmrApiUrl
       }
     };
     let map = { ...defaultMap } as any;
+    let useVersion = '2.0.0-beta.4';
+    
     if (props.importMap) {
       try {
         const p = JSON.parse(props.importMap);
-        if (p?.imports) map.imports = { ...map.imports, ...p.imports };
+        if (p?.imports) {
+          map.imports = { ...map.imports, ...p.imports };
+          const solidUrl = p.imports['solid-js'];
+          if (solidUrl) {
+            const match = solidUrl.match(/solid-js@([\d.]+(?:-beta\.\d+)?)/);
+            if (match) useVersion = match[1];
+          }
+        }
       } catch (e) {}
+    }
+    
+    if (useVersion === '2.0.0-beta.2') {
+      map.imports['solid-js'] = 'https://esm.sh/solid-js@2.0.0-beta.4?dev';
+      map.imports['@solidjs/web'] = 'https://esm.sh/@solidjs/web@2.0.0-beta.4?dev&external=solid-js';
     }
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><script type="importmap">${JSON.stringify(map)}</script><style>body{font-family:sans-serif;margin:0}#root{min-height:100vh}</style></head><body><div id="root"></div><script>${HMR_RUNTIME}</script></body></html>`;

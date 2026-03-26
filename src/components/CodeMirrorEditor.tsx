@@ -16,7 +16,9 @@ interface EditorProps {
   code: string;
   onCodeChange: (code: string) => void;
   fileName: string;
-  lspWorker: any;
+  lspWorker?: any;
+  lspReady?: boolean;
+  lspTypesVersion?: () => number;
 }
 
 export default function Editor(props: EditorProps) {
@@ -35,7 +37,7 @@ export default function Editor(props: EditorProps) {
       }),
     ];
 
-    if (props.lspWorker && (props.fileName.endsWith('.ts') || props.fileName.endsWith('.tsx'))) {
+    if (props.lspReady && props.lspWorker && (props.fileName.endsWith('.ts') || props.fileName.endsWith('.tsx'))) {
       extensions.push(
         tsFacet.of({
           worker: props.lspWorker.instance,
@@ -64,7 +66,16 @@ export default function Editor(props: EditorProps) {
   });
 
   createEffect(() => {
-    // Reconfigure extensions if worker or fileName changes
+    // Reconfigure extensions if worker, fileName, or LSP types version changes
+    const lspTypesVersion = props.lspTypesVersion?.();
+    const lspWorker = props.lspWorker;
+    const lspReady = props.lspReady;
+    const fileName = props.fileName;
+    // Access these to track as dependencies
+    void lspTypesVersion;
+    void lspWorker;
+    void lspReady;
+    void fileName;
     if (view) {
       view.setState(EditorState.create({
         doc: view.state.doc.toString(),

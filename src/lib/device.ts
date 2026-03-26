@@ -13,3 +13,7 @@ export function getInitialEditorType(): EditorType {
   if (saved === 'monaco' || saved === 'codemirror' || saved === 'net-vim') return saved as EditorType;
   return isMobile() ? 'codemirror' : 'monaco';
 }
+
+export function saveEditorType(type: EditorType): void {
+  localStorage.setItem('preferred-editor', type);
+}

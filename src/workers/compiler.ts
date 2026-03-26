@@ -1,11 +1,81 @@
 
 // @ts-ignore
 import { transform } from '@babel/standalone';
-// @ts-ignore
-import solidPreset from 'babel-preset-solid';
 import ts from 'typescript';
 
-const actualPreset = (solidPreset as any).default || solidPreset;
+let solidPreset: any = null;
+let presetLoadFailed = false;
+
+const VERSION_MAP: Record<string, string> = {
+  '2.0.0-beta.2': '2.0.0-beta.4',
+};
+
+const SOLID_V1_PRESET_VERSION = '1.9.12';
+
+const MISSING_EXPORTS_SHIM = `
+if (typeof globalThis !== 'undefined' && !globalThis._solidShimmed) {
+  globalThis._solidShimmed = true;
+  const origImport = globalThis.__import__;
+  globalThis.__import__ = function(mod, ...args) {
+    if (mod === 'solid-js' || mod?.startsWith('solid-js/')) {
+      try {
+        const m = origImport ? origImport(mod, ...args) : (origImport && origImport.call && origImport(mod)) || {};
+        if (!m.enforceLoadingBoundary) {
+          m.enforceLoadingBoundary = () => {};
+        }
+        return m;
+      } catch (e) {
+        return {};
+      }
+    }
+    return origImport ? origImport(mod, ...args) : {};
+  };
+}
+`;
+
+function getCompatiblePresetVersion(solidVersion: string): string {
+  if (VERSION_MAP[solidVersion]) {
+    return VERSION_MAP[solidVersion];
+  }
+  if (!isVersion2OrHigher(solidVersion)) {
+    return SOLID_V1_PRESET_VERSION;
+  }
+  return solidVersion;
+}
+
+function needsShim(solidVersion: string): boolean {
+  return solidVersion === '2.0.0-beta.2';
+}
+
+function isVersion2OrHigher(version: string): boolean {
+  const clean = version.replace(/-beta\.\d+/, '').replace(/-alpha\.\d+/, '').replace(/-rc\.\d+/, '');
+  const parts = clean.split('.').map(Number);
+  return parts[0] >= 2;
+}
+
+async function loadPreset(version: string) {
+  if (presetLoadFailed) {
+    throw new Error('Failed to load babel-preset-solid from esm.sh');
+  }
+  
+  if (solidPreset) return solidPreset;
+  
+  const presetVersion = getCompatiblePresetVersion(version);
+  
+  try {
+    const module = await import(/* @vite-ignore */ `https://esm.sh/babel-preset-solid@${presetVersion}?deps&external=@babel/core,@babel/plugin-transform-react-jsx,babel-plugin-solid`);
+    solidPreset = module.default || module;
+    
+    if (typeof solidPreset !== 'function' && solidPreset?.default) {
+      solidPreset = solidPreset.default;
+    }
+    
+    return solidPreset;
+  } catch (err) {
+    presetLoadFailed = true;
+    throw new Error('Failed to load babel-preset-solid from esm.sh: ' + (err as Error).message);
+  }
+}
 
 function extractImports(code: string, fileName: string) {
   const sourceFile = ts.createSourceFile(fileName, code, ts.ScriptTarget.Latest, true);
@@ -32,7 +102,6 @@ function extractImports(code: string, fileName: string) {
           if (text) imports.push(text);
         }
       } else {
-        // Handle hot() calls
         let isHot = false;
         if (ts.isIdentifier(node.expression) && node.expression.text === 'hot') {
           isHot = true;
@@ -68,7 +137,6 @@ function transformImports(code: string, fileName: string, mapping: Record<string
   const transformer = (context: ts.TransformationContext) => {
     return (rootNode: ts.SourceFile) => {
       const visit = (node: ts.Node): ts.Node => {
-        // Handle standard imports/exports
         if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
           if (node.moduleSpecifier) {
             const specifier = getSpecifier(node.moduleSpecifier);
@@ -82,7 +150,6 @@ function transformImports(code: string, fileName: string, mapping: Record<string
             }
           }
         }
-        // Handle dynamic import() and hot() calls
         if (ts.isCallExpression(node)) {
           const isImport = node.expression.kind === ts.SyntaxKind.ImportKeyword;
           let isHot = false;
@@ -121,28 +188,84 @@ function transformImports(code: string, fileName: string, mapping: Record<string
   return printer.printFile(result.transformed[0]);
 }
 
+function extractVersionFromImportMap(importMap: string): { solidVersion: string; presetVersion: string; needsShim: boolean; moduleName: string } {
+  try {
+    const map = JSON.parse(importMap);
+    const solidUrl = map.imports?.['solid-js'];
+    if (solidUrl) {
+      const match = solidUrl.match(/solid-js@([\d.]+(?:-beta\.\d+)?)/);
+      if (match) {
+        const solidVersion = match[1];
+        const presetVersion = getCompatiblePresetVersion(solidVersion);
+        return {
+          solidVersion,
+          presetVersion,
+          needsShim: needsShim(solidVersion),
+          moduleName: isVersion2OrHigher(solidVersion) ? '@solidjs/web' : 'solid-js/web',
+        };
+      }
+    }
+  } catch {}
+  return { solidVersion: '2.0.0-beta.4', presetVersion: '2.0.0-beta.4', needsShim: false, moduleName: '@solidjs/web' };
+}
+
 self.onmessage = async (e) => {
   const { type, data } = e.data;
   const messageData = type ? data : e.data;
   const messageType = type || (messageData.files ? 'COMPILE_ALL' : 'COMPILE_SINGLE');
 
+  if (messageType === 'SET_IMPORT_MAP') {
+    const { importMap } = messageData;
+    const { presetVersion, solidVersion, needsShim: shim } = extractVersionFromImportMap(importMap);
+    try {
+      solidPreset = null;
+      presetLoadFailed = false;
+      await loadPreset(presetVersion);
+      self.postMessage({ type: 'PRESET_LOADED', version: presetVersion, solidVersion, shim });
+    } catch (err: any) {
+      self.postMessage({ type: 'ERROR', error: err.message });
+    }
+    return;
+  }
+
   if (messageType === 'COMPILE_ALL') {
-    const { files, entry } = messageData;
+    const { files, entry, importMap } = messageData;
     const compiledFiles: Record<string, { code: string, imports: string[], hotImports: string[] }> = {};
+    
+    let preset = solidPreset;
+    let needsShim = false;
+    let moduleName = '@solidjs/web';
+    if (!preset) {
+      const versionInfo = importMap ? extractVersionFromImportMap(importMap) : { presetVersion: '2.0.0-beta.4', solidVersion: '2.0.0-beta.4', needsShim: false, moduleName: '@solidjs/web' };
+      preset = await loadPreset(versionInfo.presetVersion);
+      needsShim = versionInfo.needsShim;
+      moduleName = versionInfo.moduleName;
+    } else if (importMap) {
+      moduleName = extractVersionFromImportMap(importMap).moduleName;
+    }
+    
+    const actualPreset = preset?.default || preset;
+    
     try {
       for (const [fileName, code] of Object.entries(files as Record<string, string>)) {
-        const result = transform(code, {
-          presets: [
-            ['typescript', { isTSX: true, allExtensions: true }],
-            [actualPreset, { moduleName: '@solidjs/web', generate: 'dom', hydratable: false }],
-          ],
-          filename: fileName,
-        });
-        const compiledCode = result.code || '';
+        let compiledCode = '';
+        try {
+          const result = transform(code, {
+            presets: [
+              ['typescript', { isTSX: true, allExtensions: true }],
+              [actualPreset, { moduleName, generate: 'dom', hydratable: false }],
+            ],
+            filename: fileName,
+          });
+          compiledCode = result.code || '';
+        } catch (transformErr: any) {
+          self.postMessage({ type: 'ERROR', error: `Transform error in ${fileName}: ${transformErr.message}` });
+          continue;
+        }
         const { imports, hotImports } = extractImports(compiledCode, fileName);
         compiledFiles[fileName] = { code: compiledCode, imports, hotImports };
       }
-      self.postMessage({ type: 'COMPILED_ALL', compiledFiles, entry });
+      self.postMessage({ type: 'COMPILED_ALL', compiledFiles, entry, needsShim });
     } catch (err: any) {
       self.postMessage({ type: 'ERROR', error: err.message });
     }

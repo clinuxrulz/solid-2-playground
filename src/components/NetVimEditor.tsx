@@ -8,8 +8,10 @@ interface NetVimEditorProps {
   code: string;
   onCodeChange: (code: string) => void;
   fileName: string;
-  lspWorker: any;
+  lspWorker?: any;
   bridgeFS?: BridgeFS | null;
+  lspReady?: boolean;
+  lspTypesVersion?: () => number;
 }
 
 export default function NetVimEditor(props: NetVimEditorProps) {
@@ -19,6 +21,39 @@ export default function NetVimEditor(props: NetVimEditorProps) {
   const [currentFSMode, setCurrentFSMode] = createSignal<'opfs' | 'bridge'>('opfs');
   let disposeFn: (() => void) | undefined;
   let isInternalChange = false;
+  let lspLoadPromise: Promise<boolean> | null = null;
+  let initialLspRefreshDone = false;
+  const pendingBufferLoads = new Map<string, Set<() => void>>();
+
+  const normalizeEditorPath = (path: string) => path.replace(/^\/+/, '');
+  const waitForBufferLoad = (path: string) => new Promise<void>((resolve) => {
+    const normalizedPath = normalizeEditorPath(path);
+    const existing = pendingBufferLoads.get(normalizedPath);
+    if (existing) {
+      existing.add(resolve);
+      return;
+    }
+    pendingBufferLoads.set(normalizedPath, new Set([resolve]));
+  });
+
+  const flushBufferLoadWaiters = (path: string) => {
+    const normalizedPath = normalizeEditorPath(path);
+    const waiters = pendingBufferLoads.get(normalizedPath);
+    if (!waiters) return;
+    pendingBufferLoads.delete(normalizedPath);
+    waiters.forEach(resolve => resolve());
+  };
+
+  const openFile = async (api: VimAPI, path: string) => {
+    isInternalChange = true;
+    try {
+      const bufferLoad = waitForBufferLoad(path);
+      api.executeCommand(`e ${path}`);
+      await bufferLoad;
+    } finally {
+      isInternalChange = false;
+    }
+  };
 
   const createOPFSFileSystem = (): FileSystem => ({
     readFile: async (path: string) => {
@@ -126,6 +161,12 @@ export default function NetVimEditor(props: NetVimEditorProps) {
     setVimApi(api);
     disposeFn = dispose;
 
+    api.on('BufferLoaded', (data: { path: string }) => {
+      if (data?.path) {
+        flushBufferLoadWaiters(data.path);
+      }
+    });
+
     // Manually load all prelude plugins except ts-lsp
     for (const [name, source] of Object.entries(PRELUDE_PLUGINS)) {
       if (!name.includes('ts-lsp') && (name.endsWith(".ts") || name.endsWith(".tsx"))) {
@@ -133,9 +174,17 @@ export default function NetVimEditor(props: NetVimEditorProps) {
       }
     }
 
-    // Initial file load
+    // Load LSP plugin if available (wait for lspReady to ensure proper initialization order)
+    if (props.lspReady && props.lspWorker) {
+      const didLoad = await loadLspPlugin(api);
+      if (didLoad) {
+        await refreshAfterLspAttach(api, props.fileName);
+      }
+    }
+
+    // Initial file load - do this AFTER LSP is loaded
     if (props.fileName) {
-      api.executeCommand(`e ${props.fileName}`);
+      await openFile(api, props.fileName);
     }
 
     api.on('TextChanged', () => {
@@ -146,22 +195,53 @@ export default function NetVimEditor(props: NetVimEditorProps) {
     });
   });
 
+  // Helper function to load LSP plugin
+  const loadLspPlugin = async (api: any) => {
+    if (!props.lspReady || !props.lspWorker) return false;
+    if (hasSetupLSP()) return false;
+    if (lspLoadPromise) return lspLoadPromise;
+
+    const pluginName = `lsp-adapter`;
+    (window as any).__LSP_WORKER__ = props.lspWorker;
+    lspLoadPromise = (async () => {
+      const success = await api.loadPluginFromSource(pluginName, lspAdapterSource);
+      if (success) {
+        setHasSetupLSP(true);
+      }
+      return !!success;
+    })();
+
+    try {
+      return await lspLoadPromise;
+    } finally {
+      lspLoadPromise = null;
+    }
+  };
+
+  const refreshAfterLspAttach = async (api: VimAPI, path?: string) => {
+    if (!path || initialLspRefreshDone) return;
+    initialLspRefreshDone = true;
+    await openFile(api, path);
+  };
+
   createEffect(() => {
+    // Handle lspReady becoming true (ensures proper initialization order)
+    const lspReady = props.lspReady;
+    const lspWorker = props.lspWorker;
     const api = vimApi();
-    if (props.lspWorker && api && !hasSetupLSP()) {
-      const pluginName = `lsp-adapter-${Date.now()}`;
-      console.log(`NetVimEditor: Loading LSP plugin as ${pluginName}...`);
-      // Expose worker globally so the plugin can find it
-      (window as any).__LSP_WORKER__ = props.lspWorker;
-      
-      api.loadPluginFromSource(pluginName, lspAdapterSource).then(success => {
-        if (success) {
-          console.log('NetVimEditor: LSP plugin loaded successfully');
-          setHasSetupLSP(true);
-        } else {
-          console.error('NetVimEditor: Failed to load LSP plugin');
+    if (lspReady && lspWorker && api && !hasSetupLSP()) {
+      void (async () => {
+        const currentPath = api.getCurrentFilePath();
+        const didLoad = await loadLspPlugin(api);
+
+        // If the buffer was opened before the LSP adapter finished attaching,
+        // reopen it once so diagnostics and type state are recomputed with the
+        // fully initialized worker.
+        const targetPath = currentPath || props.fileName;
+        if (didLoad && targetPath) {
+          await refreshAfterLspAttach(api, targetPath);
         }
-      });
+      })();
     }
   });
 
@@ -171,7 +251,27 @@ export default function NetVimEditor(props: NetVimEditorProps) {
     const api = vimApi();
     if (api && fileName) {
       if (api.getCurrentFilePath() !== fileName) {
-        api.executeCommand(`e ${fileName}`);
+        void openFile(api, fileName);
+      }
+    }
+  });
+
+  createEffect(() => {
+    // Re-sync with LSP when types version changes
+    const lspTypesVersion = props.lspTypesVersion?.();
+    const api = vimApi();
+    const lspWorker = props.lspWorker;
+    if (lspTypesVersion && api && lspWorker && hasSetupLSP()) {
+      const currentPath = api.getCurrentFilePath();
+      if (currentPath) {
+        void (async () => {
+          const absolutePath = normalizeEditorPath(currentPath);
+          const bufferLines = api.getBuffer();
+          const code = bufferLines.join('\n');
+          await lspWorker.instance.updateFile({ path: absolutePath, code });
+          // Re-open the file to trigger re-analysis
+          await openFile(api, currentPath);
+        })();
       }
     }
   });
@@ -186,9 +286,7 @@ export default function NetVimEditor(props: NetVimEditorProps) {
       
       if (targetMode !== currentMode) {
         setCurrentFSMode(targetMode);
-        isInternalChange = true;
-        api.executeCommand(`e ${props.fileName}`);
-        setTimeout(() => { isInternalChange = false; }, 100);
+        void openFile(api, props.fileName);
       }
     }
   });
@@ -202,9 +300,7 @@ export default function NetVimEditor(props: NetVimEditorProps) {
       if (currentPath === props.fileName) {
         const currentContent = api.getBuffer().join('\n');
         if (currentContent !== code && !isInternalChange) {
-          isInternalChange = true;
-          api.executeCommand(`e ${props.fileName}`);
-          setTimeout(() => { isInternalChange = false; }, 100);
+          void openFile(api, props.fileName);
         }
       }
     }
@@ -216,4 +312,3 @@ export default function NetVimEditor(props: NetVimEditorProps) {
 
   return <div ref={editorParent} class="h-full w-full overflow-hidden bg-black" />;
 }
-
