@@ -62,6 +62,7 @@ export default function App() {
   const [availableVersions, setAvailableVersions] = createSignal<string[]>([]);
   const [isLoadingVersions, setIsLoadingVersions] = createSignal(false);
   const [showVersionDropdown, setShowVersionDropdown] = createSignal(false);
+  const [versionSearch, setVersionSearch] = createSignal('');
   
   const [compilerReady, setCompilerReady] = createSignal(false);
   const [lspReady, setLspReady] = createSignal(false);
@@ -788,7 +789,7 @@ export default function App() {
           {/* Version Selector - visible on all screen sizes */}
           <div class="relative">
             <button
-              onClick={() => setShowVersionDropdown(!showVersionDropdown())}
+              onClick={() => { setShowVersionDropdown(!showVersionDropdown()); if (!showVersionDropdown()) setVersionSearch(''); }}
               class="flex items-center space-x-1 px-2 py-0.5 rounded bg-[#333333] hover:bg-[#444444] text-[11px] text-gray-300 transition-colors"
             >
               <span>Solid {(() => {
@@ -809,18 +810,16 @@ export default function App() {
                   <input
                     type="text"
                     placeholder="Search versions..."
+                    value={versionSearch()}
                     class="w-full bg-[#1e1e1e] border border-[#444444] rounded px-2 py-1 text-[11px] text-white focus:outline-none focus:border-[#007acc]"
-                    onInput={(e) => {
-                      const search = (e.target as HTMLInputElement).value.toLowerCase();
-                      // Filter would be applied to availableVersions
-                    }}
+                    onInput={(e) => setVersionSearch((e.target as HTMLInputElement).value)}
                   />
                 </div>
                 <Show when={isLoadingVersions()}>
                   <div class="p-4 text-[11px] text-gray-400 text-center">Loading versions...</div>
                 </Show>
                 <div class="py-1">
-                  <For each={availableVersions().filter(v => shouldShowVersion(v, false))}>
+                  <For each={availableVersions().filter(v => shouldShowVersion(v, false) && v.toLowerCase().includes(versionSearch().toLowerCase()))}>
                     {(version) => {
                       const isSelected = (() => {
                         try {
