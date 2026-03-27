@@ -356,6 +356,64 @@ export default function App() {
     }
   };
 
+  const loadFromShare = async (encoded: string) => {
+    try {
+      const zip = await JSZip.loadAsync(encoded, { base64: true });
+      const entries: Record<string, string> = {};
+      const files: string[] = [];
+      let importMapContent: string | null = null;
+      
+      const zipEntries = Object.entries(zip.files);
+      await Promise.all(
+        zipEntries.map(async ([name, entry]) => {
+          if (!entry.dir) {
+            const content = await entry.async('string');
+            entries[name] = content;
+            if (name !== 'import-map.json') {
+              files.push(name);
+            } else {
+              importMapContent = content;
+            }
+          }
+        })
+      );
+      
+      const existingFiles = await listFiles();
+      for (const f of existingFiles) await deleteFile(f);
+      
+      const worker = lspWorker()?.instance;
+      if (worker) {
+        for (const f of existingFiles) {
+          if (f.endsWith('.tsx') || f.endsWith('.ts')) {
+            await worker.deleteFile(normalizeFilePath(f));
+          }
+        }
+      }
+      
+      for (const [name, content] of Object.entries(entries)) {
+        await writeFile(name, content);
+        if (worker && (name.endsWith('.tsx') || name.endsWith('.ts'))) {
+          await worker.updateFile({ path: normalizeFilePath(name), code: content });
+        }
+      }
+      
+      setFiles(files);
+      if (importMapContent) {
+        setImportMap(importMapContent);
+      }
+      
+      const preferredFile = files.length > 0 ? files[0] : 'main.tsx';
+      if (preferredFile) {
+        setActiveFile(preferredFile);
+        const content = await readFile(preferredFile);
+        setCode(content || '');
+      }
+    } catch (err) {
+      console.error('Load from share failed', err);
+      alert('Failed to load shared code.');
+    }
+  };
+
   onMount(async () => {
     const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
     if (!isLocal && (import.meta.env.PROD || (import.meta.env.DEV && (window as any).ENABLE_PWA_DEV))) {
@@ -475,6 +533,14 @@ export default function App() {
       }
     }
     setFilesLoaded(true);
+
+    // 5. Check for share URL
+    const hash = window.location.hash;
+    if (hash.startsWith('#s=')) {
+      const encoded = hash.slice(3);
+      history.replaceState(null, '', window.location.pathname);
+      await loadFromShare(encoded);
+    }
   });
 
   onCleanup(() => {
@@ -700,6 +766,28 @@ export default function App() {
     }
   };
 
+  const handleShare = async () => {
+    try {
+      const fileNames = await listFiles();
+      const zip = new JSZip();
+      
+      for (const fileName of fileNames) {
+        const content = await readFile(fileName);
+        if (content !== null) {
+          zip.file(fileName, content);
+        }
+      }
+      
+      const base64 = await zip.generateAsync({ type: 'base64', compression: 'DEFLATE', compressionOptions: { level: 9 } });
+      const url = `${window.location.origin}${window.location.pathname}#s=${base64}`;
+      await navigator.clipboard.writeText(url);
+      alert('Share link copied to clipboard!');
+    } catch (err) {
+      console.error('Share failed', err);
+      alert('Failed to create share link.');
+    }
+  };
+
   return (
     <div class="flex flex-col h-full bg-[#1e1e1e] text-[#cccccc] font-sans overflow-hidden">
       {/* Top Bar */}
@@ -716,7 +804,7 @@ export default function App() {
             </Show>
           </div>
           <nav class="hidden sm:flex space-x-3 text-[12px] overflow-hidden whitespace-nowrap">
-            <button class="hover:text-white shrink-0">Share</button>
+            <button onClick={handleShare} class="hover:text-white shrink-0">Share</button>
             <button onClick={exportOPFS} class="hover:text-white shrink-0">Export</button>
             <button onClick={triggerImport} class="hover:text-white shrink-0">Import</button>
             <Show when={bridgeConfig()} fallback={<button onClick={() => setShowBridgeModal(true)} class="hover:text-white shrink-0 text-[#76b3e1]">Bridge</button>}>
@@ -740,7 +828,7 @@ export default function App() {
             class="sm:hidden absolute top-[calc(3rem+env(safe-area-inset-top))] left-4 right-4 z-[100] bg-[#252526] border border-[#333333] rounded shadow-2xl py-2 mt-1"
             onClick={() => setIsMenuOpen(false)}
           >
-            <button class="w-full text-left px-4 py-2.5 text-[13px] hover:bg-[#2a2d2e] transition-colors">Share</button>
+            <button onClick={handleShare} class="w-full text-left px-4 py-2.5 text-[13px] hover:bg-[#2a2d2e] transition-colors">Share</button>
             <button onClick={exportOPFS} class="w-full text-left px-4 py-2.5 text-[13px] hover:bg-[#2a2d2e] transition-colors">Export</button>
             <button onClick={triggerImport} class="w-full text-left px-4 py-2.5 text-[13px] hover:bg-[#2a2d2e] transition-colors">Import</button>
             <Show when={bridgeConfig()} fallback={
