@@ -12,6 +12,9 @@
   },
   "dependencies": {
     "@babel/standalone": "^7.26.2",
+    "@capacitor/android": "^8.3.0",
+    "@capacitor/cli": "^8.3.0",
+    "@capacitor/core": "^8.3.0",
     "@codemirror/autocomplete": "^6.18.3",
     "@codemirror/commands": "^6.7.1",
     "@codemirror/lang-html": "^6.4.9",
