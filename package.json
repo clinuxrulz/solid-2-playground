@@ -23,7 +23,7 @@
     "@codemirror/theme-one-dark": "^6.1.2",
     "@codemirror/view": "^6.36.2",
     "@corvu/resizable": "^0.2.5",
-    "@net-vim/core": "^0.6.2",
+    "@net-vim/core": "^0.6.3",
     "@solidjs/signals": "^0.12.0",
     "@typescript/ata": "0.9.8",
     "@typescript/vfs": "^1.6.4",
