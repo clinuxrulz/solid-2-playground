@@ -35,7 +35,7 @@ export default defineConfig({
         enabled: false,
         type: 'module',
       },
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'logo.svg'],
+      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'logo.svg', 'solid-2-playground.jpg'],
       manifest: {
         name: 'Solid 2.0 Playground',
         short_name: 'Solid2Play',
@@ -63,6 +63,14 @@ export default defineConfig({
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',
+          },
+        ],
+        screenshots: [
+          {
+            src: 'solid-2-playground.jpg',
+            sizes: '1080x2340',
+            type: 'image/jpeg',
+            label: 'Solid 2.0 Playground',
           },
         ],
       },
