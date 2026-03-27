@@ -93,15 +93,20 @@ export async function getCompletionDetails({
   source?: string;
   data?: ts.CompletionEntryData;
 }): Promise<RawCompletionItem | null> {
-  const details = env.languageService.getCompletionEntryDetails(
-    path,
-    pos,
-    name,
-    undefined,
-    source,
-    undefined,
-    data,
-  );
+  let details: ts.CompletionEntryDetails | undefined;
+  try {
+    details = env.languageService.getCompletionEntryDetails(
+      path,
+      pos,
+      name,
+      undefined,
+      source,
+      undefined,
+      data,
+    );
+  } catch {
+    return null;
+  }
 
   if (!details) return null;
 

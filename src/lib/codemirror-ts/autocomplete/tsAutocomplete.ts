@@ -17,7 +17,12 @@ export function tsAutocomplete(opts = {}) {
                 pos: context.pos,
                 explicit: context.explicit,
             },
-        }), opts);
+        }), {
+            ...opts,
+            worker: config.worker,
+            path: config.path,
+            pos: context.pos,
+        });
         return completion;
     };
 }

@@ -2,7 +2,7 @@ import { onCleanup, onMount, createEffect } from 'solid-js';
 import { EditorView, basicSetup } from 'codemirror';
 import { javascript } from '@codemirror/lang-javascript';
 import { oneDark } from '@codemirror/theme-one-dark';
-import { EditorState } from '@codemirror/state';
+import { Compartment, EditorState } from '@codemirror/state';
 import {
   tsFacet,
   tsSync,
@@ -24,9 +24,27 @@ interface EditorProps {
 export default function Editor(props: EditorProps) {
   let editorParent: HTMLDivElement | undefined;
   let view: EditorView | undefined;
+  const lspCompartment = new Compartment();
+
+  const getLspExtensions = () => {
+    if (!props.lspReady || !props.lspWorker || (!props.fileName.endsWith('.ts') && !props.fileName.endsWith('.tsx'))) {
+      return [];
+    }
+
+    return [
+      tsFacet.of({
+        worker: props.lspWorker.instance,
+        path: props.fileName,
+      }),
+      tsSync(),
+      tsLinterWorker(),
+      autocompletion({ override: [tsAutocomplete()] }),
+      tsHover(),
+    ];
+  };
 
   const getExtensions = () => {
-    const extensions = [
+    return [
       basicSetup,
       javascript({ typescript: true, jsx: true }),
       oneDark,
@@ -35,22 +53,8 @@ export default function Editor(props: EditorProps) {
           props.onCodeChange(v.state.doc.toString());
         }
       }),
+      lspCompartment.of(getLspExtensions()),
     ];
-
-    if (props.lspReady && props.lspWorker && (props.fileName.endsWith('.ts') || props.fileName.endsWith('.tsx'))) {
-      extensions.push(
-        tsFacet.of({
-          worker: props.lspWorker.instance,
-          path: props.fileName,
-        }),
-        tsSync(),
-        tsLinterWorker(),
-        autocompletion({ override: [tsAutocomplete()] }),
-        tsHover(),
-      );
-    }
-
-    return extensions;
   };
 
   onMount(() => {
@@ -66,7 +70,7 @@ export default function Editor(props: EditorProps) {
   });
 
   createEffect(() => {
-    // Reconfigure extensions if worker, fileName, or LSP types version changes
+    // Reconfigure LSP-driven extensions without replacing the whole editor state.
     const lspTypesVersion = props.lspTypesVersion?.();
     const lspWorker = props.lspWorker;
     const lspReady = props.lspReady;
@@ -77,10 +81,9 @@ export default function Editor(props: EditorProps) {
     void lspReady;
     void fileName;
     if (view) {
-      view.setState(EditorState.create({
-        doc: view.state.doc.toString(),
-        extensions: getExtensions(),
-      }));
+      view.dispatch({
+        effects: lspCompartment.reconfigure(getLspExtensions()),
+      });
     }
   });
 

@@ -1,7 +1,6 @@
 // @ts-nocheck
 import { EditorView } from "@codemirror/view";
 import { tsFacet } from "../index";
-import { tsSyncAnnotation } from "./annotation";
 /**
  * Sync updates from CodeMirror to the worker.
  */
@@ -20,15 +19,9 @@ export function tsSync() {
         if (!update.docChanged && !first)
             return;
         first = false;
-        config.worker
-            .updateFile({
+        void config.worker.updateFile({
             path: config.path,
             code: update.state.doc.toString(),
-        })
-            .then(() => {
-            update.view.dispatch({
-                annotations: [tsSyncAnnotation.of({ path: config.path })],
-            });
         });
     });
 }

@@ -58,7 +58,13 @@ function deserializeCompletion(raw, opts) {
             }
         },
         info: (completion) => {
-            return getDetails().then(details => {
+            const detailsResult = getDetails();
+            if (!detailsResult) {
+                const renderer = (opts?.renderAutocomplete ?? defaultAutocompleteRenderer)(raw);
+                const rendered = typeof renderer === 'function' ? renderer() : renderer;
+                return rendered?.dom || rendered;
+            }
+            return detailsResult.then(details => {
                 const renderer = (opts?.renderAutocomplete ?? defaultAutocompleteRenderer)(details || raw);
                 const rendered = typeof renderer === 'function' ? renderer() : renderer;
                 return rendered?.dom || rendered;
