@@ -1,7 +1,8 @@
 /node_modules
 /dist
 /dev-dist
-/android
+# Android project is now tracked in git
+# /android
 *.keystore
 solid2-playground-release.jks
 

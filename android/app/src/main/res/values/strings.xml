@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Solid 2.0 Playground</string>
+    <string name="title_activity_main">Solid 2.0 Playground</string>
+    <string name="package_name">io.github.clinuxrulz.solid2play</string>
+    <string name="custom_url_scheme">io.github.clinuxrulz.solid2play</string>
+</resources>
