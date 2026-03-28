@@ -36,7 +36,7 @@ npm run build
 
 ## Tech Stack
 
-- [Solid 1.0](https://www.solidjs.com/) - UI framework
+- [Solid 1.9](https://www.solidjs.com/) - UI framework
 - [CodeMirror 6](https://codemirror.net/) - Code editor
 - [Babel](https://babeljs.io/) - In-browser transpilation
 - [Capacitor](https://capacitorjs.com/) - Cross-platform mobile support
