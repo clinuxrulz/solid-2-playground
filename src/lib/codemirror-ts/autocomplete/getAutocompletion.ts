@@ -21,9 +21,9 @@ export async function getAutocompletion({
    * Allow this to be a subset of the full CompletionContext
    * object, because the raw object isn't serializable.
    */
-  context: Pick<CompletionContext, "pos" | "explicit">;
+  context: Pick<CompletionContext, "pos" | "explicit" | "triggerCharacter">;
 }): Promise<RawCompletion | null> {
-  const { pos, explicit } = context;
+  const { pos, explicit, triggerCharacter } = context;
   const rawContents = env.getSourceFile(path)?.getFullText();
 
   if (!rawContents) return null;
@@ -37,12 +37,16 @@ export async function getAutocompletion({
 
   if (!word?.text && !explicit) return null;
 
+  // Only enable module/import completions for import-related trigger characters
+  const isImportTrigger = triggerCharacter === '"' || triggerCharacter === "'" || triggerCharacter === '/';
+  
   const completionInfo = env.languageService.getCompletionsAtPosition(
     path,
     pos,
     {
-      includeCompletionsForModuleExports: true,
-      includeCompletionsForImportStatements: true,
+      includeCompletionsForModuleExports: isImportTrigger,
+      includeCompletionsForImportStatements: isImportTrigger,
+      triggerCharacter,
     },
     undefined,
   );
@@ -50,6 +54,14 @@ export async function getAutocompletion({
   // TODO: build ATA support for a 'loading' state
   // while types are being fetched
   if (!completionInfo) return null;
+
+  // Debug: log completion counts
+  console.log('Completions:', {
+    triggerCharacter,
+    isImportTrigger,
+    total: completionInfo.entries.length,
+    sample: completionInfo.entries.slice(0, 5).map(e => e.name)
+  });
 
   const options = completionInfo.entries
     .filter((entry) => !TS_COMPLETE_BLOCKLIST.includes(entry.kind))

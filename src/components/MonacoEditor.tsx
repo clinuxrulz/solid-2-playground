@@ -98,6 +98,11 @@ export default function MonacoEditor(props: MonacoEditorProps) {
       scrollBeyondLastLine: false,
       tabSize: 2,
       quickSuggestions: true,
+      wordBasedSuggestions: 'off',
+      suggest: {
+        showWords: false,
+        showSnippets: false,
+      },
     });
 
     newEditor.onDidChangeModelContent(() => {

@@ -1,11 +1,33 @@
 import * as Comlink from 'comlink';
 
+const MEMBER_COMPLETION_KINDS = new Set(['property', 'method']);
+
 export function setupMonacoLSP(monaco: any, lspWorker: any, fileName: string) {
   // Disable default TypeScript validation to avoid double-reporting and conflicts
   monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
     noSemanticValidation: true,
     noSyntaxValidation: true,
   });
+
+  // Disable Monaco's built-in TS completion provider so suggestions come only
+  // from the shared LSP worker instead of being merged with Monaco defaults.
+  monaco.languages.typescript.typescriptDefaults.setModeConfiguration({
+    completionItems: false,
+    diagnostics: true,
+    hovers: false,
+    documentHighlights: false,
+    definitions: false,
+    references: false,
+    documentSymbols: false,
+    rename: false,
+    signatureHelp: false,
+    documentRangeFormattingEdits: false,
+    onTypeFormattingEdits: false,
+    codeActions: false,
+    inlayHints: false,
+  });
+
+
 
   const language = 'typescript';
 
@@ -42,23 +64,68 @@ export function setupMonacoLSP(monaco: any, lspWorker: any, fileName: string) {
   // Register Completion Provider
   const completionProvider = monaco.languages.registerCompletionItemProvider(language, {
     triggerCharacters: ['.', '"', "'", '/', '@', '<'],
+    // High priority to ensure our LSP provider is used
+    priority: 'high',
     provideCompletionItems: async (model: any, position: any, context: any) => {
-      const modelPath = model.uri.path;
-      const normalizedPath = modelPath.startsWith('/') ? modelPath : '/' + modelPath;
+      // Only provide completions when:
+      // 1. Explicitly invoked (Ctrl+Space) - triggerKind 1
+      // 2. Triggered by a character like '.', '/', '@' 
+      const isExplicit = context.triggerKind === 1;
+      const hasTriggerChar = context.triggerKind === 2 && context.triggerCharacter;
+      const lineContent = model.getLineContent(position.lineNumber);
+      const textBefore = lineContent.substring(0, position.column - 1);
+      const isCompletionOnDot = textBefore.endsWith('.') || context.triggerCharacter === '.';
 
-      const offset = model.getOffsetAt(position);
-      const result = await lspWorker.instance.getAutocompletion({
-        path: normalizedPath,
-        context: {
-          pos: offset,
-          explicit: context.triggerKind === 1 // Invoke
+      if (!isExplicit && !hasTriggerChar) {
+        if (!isCompletionOnDot && !textBefore.endsWith('>') && textBefore.length < 2) {
+          return null;
         }
-      });
+      }
 
-      if (!result) return null;
+      // Debug: log what's being triggered
+      if (context.triggerCharacter === '.') {
+        console.log('Dot completion triggered', { 
+          offset: model.getOffsetAt(position),
+          line: position.lineNumber,
+          column: position.column
+        });
+      }
+
+      try {
+        const modelPath = model.uri.path;
+        const normalizedPath = modelPath.startsWith('/') ? modelPath : '/' + modelPath;
+
+        const offset = model.getOffsetAt(position);
+        
+        if (!lspWorker.instance) {
+          console.warn('LSP worker not ready');
+          return null;
+        }
+        
+        await lspWorker.instance.updateFile({
+          path: normalizedPath,
+          code: model.getValue(),
+        });
+
+        const result = await lspWorker.instance.getAutocompletion({
+          path: normalizedPath,
+          context: {
+            pos: offset,
+            explicit: context.triggerKind === 1, // Invoke
+            triggerCharacter: context.triggerCharacter
+          }
+        });
+
+
+        
+        if (!result) return null;
+        const memberOptions = isCompletionOnDot
+          ? result.options.filter((item: any) => item.type && MEMBER_COMPLETION_KINDS.has(item.type))
+          : result.options;
+        const optionsToShow = isCompletionOnDot && memberOptions.length > 0 ? memberOptions : result.options;
 
       return {
-        suggestions: result.options.map((opt: any) => {
+        suggestions: optionsToShow.map((opt: any) => {
           let kind = monaco.languages.CompletionItemKind.Variable;
           
           switch (opt.type) {
@@ -91,6 +158,10 @@ export function setupMonacoLSP(monaco: any, lspWorker: any, fileName: string) {
           };
         })
       };
+      } catch (error) {
+        console.error('Completion error:', error);
+        return null;
+      }
     }
   });
 
